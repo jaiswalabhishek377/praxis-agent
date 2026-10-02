@@ -1,4 +1,4 @@
-// Quick test: Login → Submit voucher → Check /__state
+export {};
 const BASE = 'http://localhost:3001';
 
 async function test() {

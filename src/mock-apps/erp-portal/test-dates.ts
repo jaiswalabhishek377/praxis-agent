@@ -1,4 +1,4 @@
-// Test date validation with chaos mode
+export {};
 const BASE = 'http://localhost:3001';
 
 async function testDate(date: string, expectReject: boolean) {

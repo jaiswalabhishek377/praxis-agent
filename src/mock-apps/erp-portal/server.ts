@@ -390,9 +390,9 @@ app.get('/__state', (_req, res) => {
   }
 
   const columns = results[0].columns;
-  const vouchers = results[0].values.map(row => {
+  const vouchers = results[0].values.map((row: any[]) => {
     const obj: Record<string, unknown> = {};
-    columns.forEach((col, i) => { obj[col] = row[i]; });
+    columns.forEach((col: string, i: number) => { obj[col] = row[i]; });
     return obj;
   });
 
