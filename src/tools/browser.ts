@@ -301,8 +301,7 @@ export async function browser_type(ref: number, text: string): Promise<string> {
     );
   }
 
-  // Clear existing content and type new value
-  await locator.fill('');
+  // Clear existing content and type new value (fill() clears automatically)
   await locator.fill(text, { timeout: 5000 });
   await page.waitForTimeout(100);
 

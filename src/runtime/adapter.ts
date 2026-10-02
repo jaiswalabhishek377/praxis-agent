@@ -15,7 +15,7 @@ export const ActionSchemas = {
   }),
   browser_type: z.object({
     ref: z.coerce.number().int().positive().describe('Numeric element reference ID from the DOM snapshot'),
-    text: z.coerce.string().describe('Text to type into the input field'),
+    text: z.string().min(1).describe('Text to type into the input field'),
   }),
   browser_snapshot: z.object({}).optional().default({}),
   list_files: z.object({
@@ -290,8 +290,16 @@ async function executeGeminiCall(
     body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(30_000),
   });
-
-  const data = (await response.json()) as any;
+  // Safely parse response — Gemini sometimes returns HTML error pages on 502/503
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    const rawText = await response.text().catch(() => '');
+    const err = new Error(`Gemini returned non-JSON response [${response.status}]: ${rawText.slice(0, 200)}`);
+    (err as any).status = response.status;
+    throw err;
+  }
 
   if (!response.ok) {
     const errorMsg = data?.error?.message || `HTTP ${response.status} ${response.statusText}`;

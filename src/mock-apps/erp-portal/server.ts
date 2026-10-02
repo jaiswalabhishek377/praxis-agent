@@ -1,11 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import initSqlJs, { Database } from 'sql.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── Configuration ──────────────────────────────────────────────
 const PORT = parseInt(process.env.ERP_PORT || '3001');
@@ -206,7 +202,19 @@ app.get('/voucher', requireAuth, (_req, res) => {
 
 // Voucher submission handler
 app.post('/voucher', requireAuth, (req, res) => {
-  const { vendor_name, invoice_number, amount_usd, due_date } = req.body;
+  const { vendor_name, invoice_number, amount_usd, due_date } = req.body || {};
+
+  // ─── Required Field Validation ─────────────────────────────────
+  const missing = ['vendor_name', 'invoice_number', 'amount_usd', 'due_date']
+    .filter((f) => !req.body?.[f]?.toString().trim());
+  if (missing.length > 0) {
+    return res.status(400).send(`<h1>Error: Missing required fields: ${missing.join(', ')}</h1>`);
+  }
+
+  const parsedAmount = parseFloat(amount_usd);
+  if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).send(`<h1>Error: Invalid amount "${amount_usd}". Must be a positive number.</h1>`);
+  }
 
   // ─── Chaos: Validation mismatch ──────────────────────────────
   if (CHAOS_VALIDATION) {
@@ -326,7 +334,6 @@ app.post('/voucher', requireAuth, (req, res) => {
 
   // ─── Success: Insert into DB ──────────────────────────────────
   const submittedAt = new Date().toISOString();
-  const parsedAmount = parseFloat(amount_usd);
 
   db.run(
     `INSERT INTO vouchers (vendor_name, invoice_number, amount_usd, due_date, submitted_at) VALUES (?, ?, ?, ?, ?)`,

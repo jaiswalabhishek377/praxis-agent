@@ -10,7 +10,7 @@
     "agent": "tsx src/cli.ts",
     "eval": "tsx src/eval/harness.ts",
     "typecheck": "tsc --noEmit",
-    "start": "concurrently \"npm run dev:erp\" \"npm run dev:healthcare\" \"sleep 2 && npm run agent\""
+    "start": "concurrently \"npm run dev:erp\" \"npm run dev:healthcare\" \"npx wait-on http://localhost:3001/health && npm run agent\""
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
@@ -36,6 +36,7 @@
     "@types/pdf-parse": "^1.1.0",
     "@types/sql.js": "^1.4.11",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "wait-on": "^9.5.1"
   }
 }
