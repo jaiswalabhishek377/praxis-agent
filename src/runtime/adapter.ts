@@ -17,12 +17,22 @@ export const ActionSchemas = {
     ref: z.coerce.number().int().positive().describe('Numeric element reference ID from the DOM snapshot'),
     text: z.string().min(1).describe('Text to type into the input field'),
   }),
+  browser_select: z.object({
+    ref: z.coerce.number().int().positive().describe('Numeric element reference ID of the select dropdown'),
+    value: z.string().min(1).describe('The exact option text or value to select'),
+  }),
+  browser_get_text: z.object({
+    ref: z.coerce.number().int().positive().describe('Numeric element reference ID to read full text from'),
+  }),
   browser_snapshot: z.object({}).optional().default({}),
   list_files: z.object({
     dir: z.string().optional().default('src/test-data'),
   }),
   read_file: z.object({
     path: z.string().min(1).describe('Relative or absolute path to the file to read'),
+  }),
+  system_login: z.object({
+    system: z.string().min(1).describe('The name of the system to log into (e.g., "erp")'),
   }),
   ask_user: z
     .object({
@@ -72,6 +82,16 @@ export const AgentActionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     thought: z.string().describe('Step reasoning'),
+    action: z.literal('browser_select'),
+    params: ActionSchemas.browser_select,
+  }),
+  z.object({
+    thought: z.string().describe('Step reasoning'),
+    action: z.literal('browser_get_text'),
+    params: ActionSchemas.browser_get_text,
+  }),
+  z.object({
+    thought: z.string().describe('Step reasoning'),
     action: z.literal('browser_snapshot'),
     params: ActionSchemas.browser_snapshot.optional().default({}),
   }),
@@ -92,6 +112,11 @@ export const AgentActionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     thought: z.string().describe('Step reasoning'),
+    action: z.literal('system_login'),
+    params: ActionSchemas.system_login,
+  }),
+  z.object({
+    thought: z.string().describe('Step reasoning'),
     action: z.literal('finish'),
     params: ActionSchemas.finish,
   }),
@@ -104,7 +129,7 @@ export const SCHEMA_INSTRUCTIONS = `
 CRITICAL INSTRUCTION: You MUST respond ONLY with a single valid JSON object adhering to this schema:
 {
   "thought": "Brief explanation of your thinking and next action",
-  "action": "browser_navigate" | "browser_click" | "browser_type" | "browser_snapshot" | "list_files" | "read_file" | "ask_user" | "finish",
+  "action": "browser_navigate" | "browser_click" | "browser_type" | "browser_select" | "browser_get_text" | "browser_snapshot" | "list_files" | "read_file" | "system_login" | "ask_user" | "finish",
   "params": { ... }
 }
 
@@ -112,9 +137,12 @@ Action parameters:
 - browser_navigate: { "url": "http://..." }
 - browser_click: { "ref": 1 }
 - browser_type: { "ref": 1, "text": "value" }
+- browser_select: { "ref": 1, "value": "option text" }
+- browser_get_text: { "ref": 1 }
 - browser_snapshot: {}
 - list_files: { "dir": "src/test-data/invoices" }
-- read_file: { "path": "path/to/file" }
+- read_file: { "path": "path/to/file.json" }
+- system_login: { "system": "erp" }
 - ask_user: { "question": "..." }
 - finish: { "status": "success" | "failed" | "needs_help", "summary": "...", "evidence": "..." }
 

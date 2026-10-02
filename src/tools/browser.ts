@@ -24,6 +24,8 @@ export interface SnapshotElement {
   placeholder?: string;
   value?: string;
   text?: string;
+  options?: string[];
+  disabled?: boolean;
 }
 
 export interface DOMSnapshot {
@@ -55,6 +57,17 @@ export async function getActivePage(options?: { headless?: boolean; slowMo?: num
     contextInstance = await browserInstance.newContext({
       viewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
+    });
+    
+    // Strict sandbox routing - block out-of-scope navigation
+    await contextInstance.route('**/*', (route) => {
+      const url = new URL(route.request().url());
+      if (ALLOWED_ORIGINS.includes(url.origin) || url.protocol === 'data:') {
+        route.continue();
+      } else {
+        console.log(`\n🛡️ Sandbox blocked navigation to: ${url.href}`);
+        route.abort('accessdenied');
+      }
     });
   }
 
@@ -123,14 +136,15 @@ export async function browser_snapshot(): Promise<DOMSnapshot> {
     alertSelectors.forEach((sel) => {
       document.querySelectorAll(sel).forEach((el) => {
         const htmlEl = el as HTMLElement;
-        if (htmlEl.offsetParent !== null && htmlEl.innerText.trim()) {
+        const isVisible = htmlEl.checkVisibility?.() ?? (htmlEl.getClientRects().length > 0);
+        if (isVisible && htmlEl.innerText.trim()) {
           alertTexts.push(htmlEl.innerText.trim().replace(/\s+/g, ' '));
         }
       });
     });
 
     // 3. Find interactive elements
-    const selector = 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href], [role="button"]';
+    const selector = 'input:not([type="hidden"]), select, textarea, button, a[href], [role="button"]';
     const rawElements = Array.from(document.querySelectorAll(selector));
 
     let refCounter = 1;
@@ -138,11 +152,13 @@ export async function browser_snapshot(): Promise<DOMSnapshot> {
       ref: number;
       tagName: string;
       type?: string;
+      disabled?: boolean;
       label?: string;
       name?: string;
       placeholder?: string;
       value?: string;
       text?: string;
+      options?: string[];
     }> = [];
 
     for (const el of rawElements) {
@@ -150,8 +166,9 @@ export async function browser_snapshot(): Promise<DOMSnapshot> {
 
       // Visibility check
       const style = window.getComputedStyle(htmlEl);
+      const isVisible = htmlEl.checkVisibility?.() ?? (htmlEl.getClientRects().length > 0);
       if (
-        htmlEl.offsetParent === null ||
+        !isVisible ||
         style.display === 'none' ||
         style.visibility === 'hidden' ||
         style.opacity === '0'
@@ -188,14 +205,27 @@ export async function browser_snapshot(): Promise<DOMSnapshot> {
         tagName,
       };
 
+      if (htmlEl.hasAttribute('disabled')) {
+        entry.disabled = true;
+      }
+
       if (inputEl.type) entry.type = inputEl.type;
       if (labelText) entry.label = labelText;
       if (inputEl.name) entry.name = inputEl.name;
       if (inputEl.placeholder) entry.placeholder = inputEl.placeholder;
 
       // Capture current input value so agent knows what is already filled
-      if (['input', 'textarea', 'select'].includes(tagName)) {
+      if (['input', 'textarea'].includes(tagName)) {
         entry.value = inputEl.value || '';
+        if (inputEl.type === 'checkbox' || inputEl.type === 'radio') {
+          entry.value = inputEl.checked ? 'checked' : 'unchecked';
+        } else if (inputEl.type === 'password' && entry.value) {
+          entry.value = '[hidden]';
+        }
+      } else if (tagName === 'select') {
+        const selectEl = htmlEl as HTMLSelectElement;
+        entry.value = selectEl.value || '';
+        entry.options = Array.from(selectEl.options).map(o => o.text.trim());
       }
 
       // Capture button / link text
@@ -206,12 +236,17 @@ export async function browser_snapshot(): Promise<DOMSnapshot> {
 
       elements.push(entry);
     }
+    
+    // Grab visible text for context (e.g. data tables, unformatted amounts)
+    const rawBodyText = document.body.innerText.replace(/\s+/g, ' ').trim();
+    const visibleText = rawBodyText.substring(0, 1500) + (rawBodyText.length > 1500 ? '...' : '');
 
     return {
       title: document.title,
       url: window.location.href,
       alerts: alertTexts,
       elements,
+      visibleText,
     };
   });
 
@@ -243,9 +278,20 @@ export async function browser_snapshot(): Promise<DOMSnapshot> {
       }
     } else if (el.tagName === 'select') {
       parts.push(`Dropdown "${el.label || el.name || 'Select'}" (selected: "${el.value || ''}")`);
+      if (el.options) {
+        parts.push(`[options: ${el.options.join(' | ')}]`);
+      }
+    }
+
+    if (el.disabled) {
+      parts.push(`(DISABLED)`);
     }
 
     lines.push(parts.join(' '));
+  }
+
+  if (result.visibleText) {
+    lines.push(`\n[Visible Text Context (first 1500 chars)]:\n${result.visibleText}`);
   }
 
   const formatted = lines.join('\n');
@@ -314,10 +360,31 @@ export async function browser_type(ref: number, text: string): Promise<string> {
   return `Typed "${text}" into [${ref}] (${label})`;
 }
 
-// ─── 5. browser_screenshot ───────────────────────────────────────
+// ─── 5. browser_select ───────────────────────────────────────────
+export async function browser_select(ref: number, value: string): Promise<string> {
+  const page = await getActivePage();
+  const locator = page.locator(`[data-agent-ref="${ref}"]`);
+  const count = await locator.count();
+
+  if (count === 0) {
+    throw new Error(`Element with ref [${ref}] not found. Call browser_snapshot to get the latest interactive element IDs.`);
+  }
+
+  await locator.selectOption(value, { timeout: 5000 });
+  await page.waitForTimeout(100);
+
+  const label = await locator.evaluate((el) => {
+    const input = el as HTMLSelectElement;
+    const lbl = document.querySelector(`label[for="${input.id}"]`);
+    return lbl?.textContent?.trim() || input.name || 'dropdown';
+  });
+
+  return `Selected "${value}" in [${ref}] (${label})`;
+}
+
+// ─── 6. browser_screenshot ───────────────────────────────────────
 export async function browser_screenshot(name = 'proof'): Promise<string> {
   const page = await getActivePage();
-
   const artifactsDir = path.resolve(process.cwd(), 'artifacts');
   if (!fs.existsSync(artifactsDir)) {
     fs.mkdirSync(artifactsDir, { recursive: true });
@@ -325,6 +392,66 @@ export async function browser_screenshot(name = 'proof'): Promise<string> {
 
   const filePath = path.join(artifactsDir, `${name}.png`);
   await page.screenshot({ path: filePath, fullPage: true });
-
   return filePath;
+}
+
+
+// ─── System Login (Secure Credential Injection) ──────────────
+export async function system_login(system: string): Promise<string> {
+  const page = await getActivePage();
+  const companyName = process.env.COMPANY_NAME;
+  if (!companyName) {
+    throw new Error('COMPANY_NAME is not set. CLI must pass it.');
+  }
+  
+  const configPath = path.resolve(`companies/${companyName}.config.json`);
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Config file not found for ${companyName}: ${configPath}`);
+  }
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const sysConfig = config.systems?.[system.toLowerCase()];
+  
+  if (!sysConfig) {
+    throw new Error(`Unknown system '${system}' in ${companyName} config.`);
+  }
+
+  const userVal = process.env[sysConfig.userEnv];
+  const passVal = process.env[sysConfig.passEnv];
+  if (!userVal || !passVal) {
+    throw new Error(`Missing credentials. Ensure ${sysConfig.userEnv} and ${sysConfig.passEnv} are set.`);
+  }
+
+  await page.goto(sysConfig.url, { waitUntil: 'domcontentloaded' });
+  await page.fill(sysConfig.userSelector, userVal);
+  await page.fill(sysConfig.passSelector, passVal);
+
+  // Wait for either the error banner OR navigation away from the login page
+  const navigationPromise = page.waitForURL(url => url.href !== sysConfig.url, { timeout: 5000 }).catch(() => null);
+  await page.click(sysConfig.submitSelector);
+  await navigationPromise;
+
+  const errorBanner = await page.locator(sysConfig.errorSelector || '.error-banner').count();
+  if (errorBanner > 0) {
+    const errorMsg = await page.locator(sysConfig.errorSelector || '.error-banner').innerText();
+    throw new Error(`Login failed for ${system}: ${errorMsg.trim()}`);
+  }
+
+  return `System login executed securely for ${system}. Navigation successful.`;
+}
+
+// ─── 7. browser_get_text ─────────────────────────────────────────
+export async function browser_get_text(ref: number): Promise<string> {
+  const page = await getActivePage();
+  const locator = page.locator(`[data-agent-ref="${ref}"]`);
+  const count = await locator.count();
+
+  if (count === 0) {
+    throw new Error(`Element with ref [${ref}] not found.`);
+  }
+
+  let text = await locator.innerText();
+  if (text.length > 2000) {
+    text = text.substring(0, 2000) + '\n...[truncated]';
+  }
+  return `Text of [${ref}]:\n${text}`;
 }

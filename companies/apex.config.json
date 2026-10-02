@@ -1,0 +1,13 @@
+{
+  "systems": {
+    "erp": {
+      "url": "http://localhost:3001/login",
+      "userSelector": "input[name=\"username\"]",
+      "passSelector": "input[name=\"password\"]",
+      "submitSelector": "button:has-text(\"Sign In\")",
+      "userEnv": "ERP_USER",
+      "passEnv": "ERP_PASS",
+      "errorSelector": ".error-banner"
+    }
+  }
+}
