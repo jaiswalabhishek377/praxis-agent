@@ -1,0 +1,11 @@
+{
+  "invoiceId": "INV-2026-0318",
+  "vendor": "Apex Healthcare LLC",
+  "invoiceNumber": "AH-7104",
+  "amount": 800.00,
+  "currency": "USD",
+  "date": "2026-09-10",
+  "dueDate": "2026-10-10",
+  "description": "Routine diagnostic scanner maintenance — September service",
+  "notes": "Paid in full via ACH."
+}

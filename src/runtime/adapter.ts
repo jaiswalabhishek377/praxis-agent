@@ -18,6 +18,9 @@ export const ActionSchemas = {
     text: z.coerce.string().describe('Text to type into the input field'),
   }),
   browser_snapshot: z.object({}).optional().default({}),
+  list_files: z.object({
+    dir: z.string().optional().default('src/test-data'),
+  }),
   read_file: z.object({
     path: z.string().min(1).describe('Relative or absolute path to the file to read'),
   }),
@@ -74,6 +77,11 @@ export const AgentActionSchema = z.discriminatedUnion('action', [
   }),
   z.object({
     thought: z.string().describe('Step reasoning'),
+    action: z.literal('list_files'),
+    params: ActionSchemas.list_files,
+  }),
+  z.object({
+    thought: z.string().describe('Step reasoning'),
     action: z.literal('read_file'),
     params: ActionSchemas.read_file,
   }),
@@ -96,7 +104,7 @@ export const SCHEMA_INSTRUCTIONS = `
 CRITICAL INSTRUCTION: You MUST respond ONLY with a single valid JSON object adhering to this schema:
 {
   "thought": "Brief explanation of your thinking and next action",
-  "action": "browser_navigate" | "browser_click" | "browser_type" | "browser_snapshot" | "read_file" | "ask_user" | "finish",
+  "action": "browser_navigate" | "browser_click" | "browser_type" | "browser_snapshot" | "list_files" | "read_file" | "ask_user" | "finish",
   "params": { ... }
 }
 
@@ -105,6 +113,7 @@ Action parameters:
 - browser_click: { "ref": 1 }
 - browser_type: { "ref": 1, "text": "value" }
 - browser_snapshot: {}
+- list_files: { "dir": "src/test-data/invoices" }
 - read_file: { "path": "path/to/file" }
 - ask_user: { "question": "..." }
 - finish: { "status": "success" | "failed" | "needs_help", "summary": "...", "evidence": "..." }
