@@ -1,0 +1,40 @@
+{
+  "name": "centragent",
+  "version": "1.0.0",
+  "description": "CentrAgent — Autonomous AI Operations Worker. Hand-written agentic runtime for enterprise task execution with browser automation, policy gates, and independent verification.",
+  "type": "module",
+  "scripts": {
+    "dev:erp": "tsx src/mock-apps/erp-portal/server.ts",
+    "dev:healthcare": "tsx src/mock-apps/healthcare-portal/server.ts",
+    "dev:apps": "concurrently \"npm run dev:erp\" \"npm run dev:healthcare\"",
+    "agent": "tsx src/cli.ts",
+    "eval": "tsx src/eval/harness.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "concurrently \"npm run dev:erp\" \"npm run dev:healthcare\" \"sleep 2 && npm run agent\""
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "groq-sdk": "^0.9.0",
+    "playwright": "^1.49.0",
+    "zod": "^3.24.0",
+    "p-retry": "^6.2.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "sql.js": "^1.11.0",
+    "cors": "^2.8.5",
+    "cookie-parser": "^1.4.7",
+    "pdf-parse": "^1.1.1",
+    "chalk": "^5.4.0",
+    "ora": "^8.1.0",
+    "concurrently": "^9.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.10.0",
+    "@types/express": "^5.0.0",
+    "@types/cors": "^2.8.0",
+    "@types/cookie-parser": "^1.4.0",
+    "@types/pdf-parse": "^1.1.0"
+  }
+}

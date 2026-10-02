@@ -1,0 +1,15 @@
+{
+  "invoiceId": "INV-2026-0472",
+  "vendor": "Apex Healthcare LLC",
+  "invoiceNumber": "AH-7891",
+  "amount": 1450.00,
+  "currency": "USD",
+  "date": "2026-10-15",
+  "dueDate": "2026-11-15",
+  "description": "Medical equipment maintenance — Q4 service contract",
+  "lineItems": [
+    { "item": "Preventive maintenance — MRI Unit #3", "qty": 1, "unitPrice": 850.00, "total": 850.00 },
+    { "item": "Calibration — X-Ray Suite B", "qty": 1, "unitPrice": 600.00, "total": 600.00 }
+  ],
+  "notes": "Net 30 payment terms. Contact: billing@apexhealth.com"
+}
