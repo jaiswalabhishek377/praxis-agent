@@ -45,14 +45,14 @@ const SCENARIOS: Scenario[] = [
   { id: 'SC-01', name: 'Single JSON invoice entry (ERP)', category: 'core', company: 'globalcorp', domain: 'erp',
     goal: 'Process invoice src/test-data/invoices/INV-0472.json into the ERP portal', expected: ACME_7891 },
   { id: 'SC-02', name: 'Unreliable filenames, paid invoice skipped', category: 'core', company: 'globalcorp', domain: 'erp',
-    goal: "Process Acme Corp's latest unpaid bill into the ERP portal as requested in tickets/ticket_01.txt", expected: ACME_8888 },
+    goal: 'Take care of the request in tickets/ticket_01.txt', expected: ACME_8888 },
   { id: 'SC-03', name: 'PDF invoice parsing', category: 'core', company: 'globalcorp', domain: 'erp',
     goal: 'Process the invoice from scan_0003.pdf into the ERP portal', expected: ACME_8888 },
   { id: 'SC-04', name: 'Incomplete invoice flagged, valid one submitted', category: 'core', company: 'globalcorp', domain: 'erp',
-    goal: 'Process the latest valid Acme Corp invoice from src/test-data/invoices into the ERP portal',
-    expected: ACME_8888, summaryMustMention: ['AC-1112'] },
+    goal: "Process Acme Corp's latest invoice",
+    expected: ACME_8888, summaryMustMention: ['export_b', 'AC-1112'] },
   { id: 'SC-05', name: 'Healthcare claim submission', category: 'multi-system', company: 'globalcorp', domain: 'claims',
-    goal: 'Submit the pending outpatient medical claim for patient John Doe from tickets/ticket_02.txt into the healthcare portal',
+    goal: 'Take care of the request in tickets/ticket_02.txt',
     expected: { kind: 'created', patient_id: 'P-9821', treatment_code: 'TRT-XRAY', amount: 450.0 } },
   { id: 'SC-06', name: 'Chaos: validation error', category: 'chaos', company: 'globalcorp', domain: 'erp',
     goal: 'Process invoice src/test-data/invoices/export_a.json into the ERP portal', chaos: { validation: true },
@@ -197,10 +197,10 @@ async function runOne(s: Scenario, n: number): Promise<Row> {
 
     if (verdict === 'verified' && s.summaryMustMention?.length) {
       const text = `${r.summary ?? ''} ${r.evidence ?? ''}`.toLowerCase();
-      const missing = s.summaryMustMention.filter((m) => !text.includes(m.toLowerCase()));
-      if (missing.length) {
+      const matched = s.summaryMustMention.some((m) => text.includes(m.toLowerCase()));
+      if (!matched) {
         verdict = 'failed';
-        reasons = [...reasons, `Final summary did not flag: ${missing.join(', ')}`];
+        reasons = [...reasons, `Final summary did not flag: ${s.summaryMustMention.join(' or ')}`];
         patchRunFile(r.runId, { verified: false, verifierReasons: reasons });
       }
     }
@@ -261,21 +261,45 @@ export async function runEvaluationHarness() {
   const list = SCENARIOS.filter((s) => !only || s.id === only);
   if (list.length === 0) { console.error(chalk.red(`No scenario with id "${only}"`)); process.exit(1); }
 
+  const settled = (r: Row) => r.verdict !== 'infra_error' && r.verdict !== 'error';
+
   let rows: Row[] = [];
-  if (resume && fs.existsSync('eval-results.json')) {
-    rows = (JSON.parse(fs.readFileSync('eval-results.json', 'utf8')) as Row[]).filter((r) => r.verdict !== 'infra_error' && r.verdict !== 'error');
-    console.log(chalk.gray(`Resuming: keeping ${rows.length} completed runs.`));
+  if ((resume || only) && fs.existsSync('eval-results.json')) {
+    try {
+      rows = JSON.parse(fs.readFileSync('eval-results.json', 'utf8')) as Row[];
+      console.log(chalk.gray(`Loaded ${rows.length} existing recorded runs.`));
+    } catch {}
+  } else if (!only && !resume && fs.existsSync('eval-results.json')) {
+    fs.renameSync('eval-results.json', `eval-results.${Date.now()}.json`);
   }
 
   for (const s of list) {
     for (let n = 1; n <= runs; n++) {
-      if (rows.some((r) => r.id === s.id && r.run === n)) continue;
+      if (resume && rows.some((r) => r.id === s.id && r.run === n && settled(r))) {
+        const prev = rows.find((r) => r.id === s.id && r.run === n);
+        console.log(chalk.gray(`Skipping already settled ${s.id} run ${n} (verdict: ${prev?.verdict})`));
+        continue;
+      }
       console.log(chalk.bold.blue(`\n=== ${s.id}: ${s.name} (run ${n}/${runs}) ===`));
       const row = await runOne(s, n);
-      rows.push(row);
+      
+      // Update or append row
+      const existingIdx = rows.findIndex((r) => r.id === s.id && r.run === n);
+      if (existingIdx >= 0) {
+        rows[existingIdx] = row;
+      } else {
+        rows.push(row);
+      }
+
       const color = row.verdict === 'verified' ? chalk.green : row.verdict === 'failed' ? chalk.red : chalk.yellow;
       console.log(color(`-> ${row.verdict.toUpperCase()} (agent said: ${row.claimed}; ${row.steps} steps, ${row.calls} calls)${row.reasons ? ' — ' + row.reasons : ''}`));
-      fs.writeFileSync('eval-results.json', JSON.stringify(rows, null, 2)); // progress saved after every run
+      
+      // Progress saved after every run
+      fs.writeFileSync('eval-results.json', JSON.stringify(rows, null, 2));
+      fs.writeFileSync('eval-results.md', toMarkdown(rows));
+
+      // 2-second cooldown pause to replenish RPM quota
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 

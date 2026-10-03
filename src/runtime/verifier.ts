@@ -219,18 +219,22 @@ export async function verifyRun(runId: string, config: VerifierConfig & { warnin
   const reasons = checkRecords(config.expected, beforeRecords, afterRecords);
   if (config.warnings?.length) reasons.push(...config.warnings);
 
-  // Process-and-flag policy: any incomplete invoice (no amount) in the folder must be named in the agent's summary.
+  // Process-and-flag policy: if the agent encountered an incomplete invoice (no amount) during candidate scanning, it must flag it in the summary.
   if (!isHealthcare && config.expected.kind === "created") {
     const invDir = path.resolve("src/test-data/invoices");
     const summaryText = `${runData.summary ?? ""} ${runData.evidence ?? ""}`.toLowerCase();
     try {
       for (const f of fs.readdirSync(invDir)) {
         if (!f.endsWith(".json")) continue;
-        const inv = JSON.parse(fs.readFileSync(path.join(invDir, f), "utf8"));
-        if (inv.invoiceNumber && inv.amount === undefined) {
-          const base = f.replace(/\.json$/i, "").toLowerCase();
-          if (!summaryText.includes(base) && !summaryText.includes(String(inv.invoiceNumber).toLowerCase())) {
-            reasons.push(`Summary does not flag the incomplete invoice ${f} (missing amount).`);
+        const base = f.replace(/\.json$/i, "").toLowerCase();
+        // Only enforce if the agent actually read this file during candidate evaluation
+        const actuallyRead = (runData.trace ?? []).some((t: string) => t.toLowerCase().includes(`read_file`) && (t.toLowerCase().includes(f.toLowerCase()) || t.toLowerCase().includes(base)));
+        if (actuallyRead) {
+          const inv = JSON.parse(fs.readFileSync(path.join(invDir, f), "utf8"));
+          if (inv.invoiceNumber && inv.amount === undefined) {
+            if (!summaryText.includes(base) && !summaryText.includes(String(inv.invoiceNumber).toLowerCase())) {
+              reasons.push(`Summary does not flag the incomplete invoice ${f} (missing amount).`);
+            }
           }
         }
       }

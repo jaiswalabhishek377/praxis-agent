@@ -54,7 +54,7 @@ ${playbookContent ? `COMPANY KNOWLEDGE BASE (PLAYBOOK):\n${playbookContent}\n` :
 RULES:
 1. You must figure out the steps yourself. Do not ask for help unless you are truly stuck or need human disambiguation.
 2. The environment may have chaos (flaky buttons, validation errors, session timeouts). If an action fails, READ the error message, adapt your plan, and try again.
-3. If asked to find the "latest" or "correct" file among multiple candidates, you MUST open and read EVERY candidate file in the folder, of ANY type (.json, .pdf, .txt). Compare the dates inside each file, ignore invoices that are already paid, duplicated, or missing required fields (e.g. no amount), then pick the newest valid one. Never decide before every file in the listing has been read.
+3. If the user specifies a specific file path (e.g. "Process invoice src/test-data/invoices/export_a.json"), simply read and process that file directly. Only if asked to find the "latest", "newest", or "unpaid" file from a folder or ticket without an exact file path, open and read EVERY candidate file in the folder (.json, .pdf, .txt), compare the dates inside each file, ignore invoices that are already paid, and if an incomplete invoice (e.g. missing amount) is encountered, process the valid invoice and mention the skipped incomplete filename in your final summary.
 3b. If the portal rejects your submission (e.g. duplicate), do NOT switch to a different invoice just to get something submitted. Re-check whether you picked the correct invoice; if the chosen one is truly a duplicate, call finish with status "failed" or use ask_user.
 4. For web apps, you interact via numeric "ref" IDs from the DOM snapshot, NOT CSS selectors.
 5. Report what you observed. An independent verifier will check your result.
@@ -62,6 +62,8 @@ RULES:
 7. Think step-by-step in the 'thought' field before choosing an 'action'.
 8. Use system_login for authentication.
 9. Refs change after every action, so use only the CURRENT PAGE section for the current state.
+10. If an irreversible action (such as clicking Submit) is denied or rejected by the human approver / policy gate, the action was NOT executed. Do NOT retry submitting. Conclude the task immediately by calling 'finish' with status 'failed' and an explanation that the human approver denied the submission.
+11. When entering values into numeric input fields (like amount), enter the clean numeric value without currency symbols or thousands commas (e.g. 1450 or 1450.00 instead of $1,450.00).
 `;
 
   const tracker = new RunTracker();
@@ -147,7 +149,7 @@ RULES:
       }
       
       if (!gateResult.approved) {
-        const sysMessage = `[SYSTEM]: Action '${action}' failed policy check. Reason: ${gateResult.reason}. Adapt your plan.`;
+        const sysMessage = `[SYSTEM]: Action '${action}' was DENIED by the policy gate / approver (${gateResult.reason || 'Rejected'}). The action was NOT executed. Do NOT retry this action. Conclude the task immediately by calling 'finish' with status 'failed' explaining that approval was denied.`;
         history.push(sysMessage);
         
         // Trace rejected step

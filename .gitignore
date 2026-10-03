@@ -7,5 +7,5 @@ artifacts/*.json
 !artifacts/.gitkeep
 
 runs/
-
 artifacts/
+eval-results.*.json

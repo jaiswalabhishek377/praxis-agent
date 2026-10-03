@@ -221,7 +221,8 @@ export const GEMINI_CASCADE = [
   'gemini-3.5-flash-lite',    // Tier 1: Fastest (~0.9s), ultra-cheap
   'gemini-flash-lite-latest', // Tier 2: Official stable alias (~1.3s)
   'gemini-3-flash-preview',   // Tier 3: High reliability preview (~1.9s)
-  'gemini-3.1-flash-lite',    // Tier 4: Solid fallback (~2.5s)
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite'    // Tier 4: Solid fallback (~2.5s)
 ];
 
 export const GROQ_CASCADE = [
