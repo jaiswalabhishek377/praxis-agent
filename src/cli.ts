@@ -1,5 +1,5 @@
 // CentrAgent — Interactive CLI Entry Point
-// Usage: npx tsx src/cli.ts "Process invoice apex_health.json into ERP portal"
+// Usage: npx tsx src/cli.ts "Process invoice src/test-data/invoices/INV-0472.json into ERP portal" --company globalcorp
 
 import chalk from 'chalk';
 
@@ -11,12 +11,13 @@ console.log(chalk.bold.cyan(`
 ╚██████╗███████╗██║ ╚████║   ██║   ██║  ██║██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   
  ╚═════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   
 `));
+console.log(chalk.bold('Autonomous AI Operations Worker\n'));
 
 import fs from 'fs';
 import path from 'path';
 import * as readline from 'readline/promises';
 import { runAgentLoop } from './runtime/loop.js';
-import { verifyRun } from './runtime/verifier.js';
+import { verifyRun, deriveExpectation } from './runtime/verifier.js';
 
 let goal = '';
 let playbookContent = '';
@@ -50,9 +51,10 @@ for (let i = 0; i < args.length; i++) {
       process.exit(1);
     }
     i++;
+  } else if (args[i] === '--auto-approve') {
+    process.env.AUTO_APPROVE = 'true';
   } else if (!args[i].startsWith('--')) {
     goal = args[i];
-  }
   }
 }
 
@@ -69,22 +71,28 @@ async function main() {
   }
 
   if (!playbookContent) {
-    console.error(chalk.red.bold('\n❌ No playbook provided. Use --company <name> (e.g. --company apex) to inject company context.'));
-    process.exit(1);
+    const defaultPlaybook = path.resolve('companies/globalcorp.md');
+    if (fs.existsSync(defaultPlaybook)) {
+      process.env.COMPANY_NAME = 'globalcorp';
+      playbookContent = fs.readFileSync(defaultPlaybook, 'utf8');
+      console.log(chalk.blue('📚 Loaded default playbook for: globalcorp'));
+    } else {
+      console.error(chalk.red.bold('\n❌ No playbook provided. Use --company <name> (e.g. --company globalcorp) to inject company context.'));
+      process.exit(1);
+    }
   }
 
   console.log(chalk.bold.white(`\nGoal: ${goal}\n`));
 
   try {
-    let beforeState: any[] | undefined;
+    let beforeState: any = {};
     try {
-      const res = await fetch('http://localhost:3001/__state', { signal: AbortSignal.timeout(3000) });
-      if (res.ok) {
-        beforeState = (await res.json()).vouchers ?? [];
-      }
-    } catch (e) {
-      // Server not accessible or timeout
-    }
+      const res1 = await fetch('http://localhost:3001/__state', { signal: AbortSignal.timeout(3000) }).catch(()=>null);
+      if (res1?.ok) beforeState.erp = (await res1.json()).vouchers ?? [];
+      
+      const res2 = await fetch('http://localhost:3002/__state', { signal: AbortSignal.timeout(3000) }).catch(()=>null);
+      if (res2?.ok) beforeState.healthcare = (await res2.json()).claims ?? [];
+    } catch (e) {}
 
     const runResult = await runAgentLoop(goal, playbookContent);
     
@@ -97,13 +105,19 @@ async function main() {
     const outPath = path.join(runsDir, `${runResult.runId}.json`);
     const fullData = { ...runResult, beforeState };
     fs.writeFileSync(outPath, JSON.stringify(fullData, null, 2));
-    console.log(chalk.gray(`\nRun output saved to ${outPath}`));
+    console.log(chalk.white(`\nRun output saved to ${outPath}`));
 
     let verdict: 'verified' | 'failed' | 'inconclusive' | 'unverified' = 'unverified';
     if (expectArg) {
       verdict = await verifyRun(runResult.runId, { expected: expectParsed });
     } else {
-      console.log(chalk.yellow('⚠ UNVERIFIED: no --expect supplied; agent claim not checked.'));
+      const derived = deriveExpectation(runResult.runId);
+      if (derived) {
+        console.log(chalk.white('ℹ No --expect supplied: derived expected values from the source invoice on disk.'));
+        verdict = await verifyRun(runResult.runId, { expected: derived.expected, warnings: derived.warnings });
+      } else {
+        console.log(chalk.yellow('⚠ UNVERIFIED: no --expect and no source invoice found; agent claim not checked.'));
+      }
     }
 
     process.exit(verdict === 'verified' || (verdict === 'unverified' && runResult.status === 'success') ? 0 : 1);
