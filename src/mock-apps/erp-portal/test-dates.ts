@@ -1,6 +1,7 @@
 export {};
 const BASE = 'http://localhost:3001';
 
+let counter = 1;
 async function testDate(date: string, expectReject: boolean) {
   const login = await fetch(`${BASE}/login`, {
     method: 'POST',
@@ -13,7 +14,7 @@ async function testDate(date: string, expectReject: boolean) {
   const res = await fetch(`${BASE}/voucher`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
-    body: `vendor_name=Test&invoice_number=T-1&amount_usd=100&due_date=${encodeURIComponent(date)}`,
+    body: `vendor_name=Test&invoice_number=T-DATE-${Date.now()}-${counter++}&amount_usd=100&due_date=${encodeURIComponent(date)}`,
     redirect: 'manual',
   });
   const html = await res.text();

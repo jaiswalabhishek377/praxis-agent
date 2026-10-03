@@ -40,17 +40,21 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// ─── Chaos: Session tracking ───────────────────────────────────
+// ─── Chaos: Dynamic Configuration & Tracking ─────────────────
+let currentChaos = {
+  validation: process.env.CHAOS_VALIDATION === 'true',
+  session: process.env.CHAOS_SESSION === 'true',
+  flaky: process.env.CHAOS_FLAKY === 'true',
+};
+
 let requestCount = 0;
 let sessionInvalidated = false;
-
-// ─── Chaos: Flaky button tracking ──────────────────────────────
 let submitAttempts = 0;
 
 // ─── Auth Middleware ────────────────────────────────────────────
 function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   // Chaos: Session expiry — invalidate after 3 authenticated requests
-  if (CHAOS_SESSION && !sessionInvalidated) {
+  if (currentChaos.session && !sessionInvalidated) {
     requestCount++;
     if (requestCount > 3) {
       res.clearCookie('session');
@@ -217,7 +221,7 @@ app.post('/voucher', requireAuth, (req, res) => {
   }
 
   // ─── Chaos: Validation mismatch ──────────────────────────────
-  if (CHAOS_VALIDATION) {
+  if (currentChaos.validation) {
     const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
     const match = due_date.match(dateRegex);
     // Check format AND actual date validity (month 1-12, valid day for month)
@@ -281,7 +285,7 @@ app.post('/voucher', requireAuth, (req, res) => {
   }
 
   // ─── Chaos: Flaky submit button ──────────────────────────────
-  if (CHAOS_FLAKY) {
+  if (currentChaos.flaky) {
     submitAttempts++;
     if (submitAttempts === 1) {
       // First attempt fails silently — returns the form again with no change
@@ -330,6 +334,16 @@ app.post('/voucher', requireAuth, (req, res) => {
         </html>
       `);
     }
+  }
+
+  // ─── Duplicate invoice guard (real ERPs reject re-entered invoices) ─────
+  const dupStmt = db.prepare('SELECT COUNT(*) AS c FROM vouchers WHERE LOWER(vendor_name) = LOWER(?) AND invoice_number = ?');
+  dupStmt.bind([vendor_name, invoice_number]);
+  dupStmt.step();
+  const dupCount = (dupStmt.getAsObject() as any).c as number;
+  dupStmt.free();
+  if (dupCount > 0) {
+    return res.status(409).send(`<h1>Error: Duplicate invoice. Invoice ${invoice_number} from ${vendor_name} already exists in the system. No voucher was created.</h1>`);
   }
 
   // ─── Success: Insert into DB ──────────────────────────────────
@@ -406,9 +420,31 @@ app.get('/__state', (_req, res) => {
   res.json({ vouchers, count: vouchers.length });
 });
 
+// ─── Hidden Reset Endpoint (for Eval Harness & Testing) ────────
+app.post('/__reset', (req, res) => {
+  db.run('DELETE FROM vouchers');
+  requestCount = 0;
+  sessionInvalidated = false;
+  submitAttempts = 0;
+  if (req.body?.chaos) {
+    currentChaos = {
+      validation: Boolean(req.body.chaos.validation),
+      session: Boolean(req.body.chaos.session),
+      flaky: Boolean(req.body.chaos.flaky),
+    };
+  } else {
+    currentChaos = {
+      validation: process.env.CHAOS_VALIDATION === 'true',
+      session: process.env.CHAOS_SESSION === 'true',
+      flaky: process.env.CHAOS_FLAKY === 'true',
+    };
+  }
+  res.json({ status: 'reset', count: 0, chaos: currentChaos });
+});
+
 // ─── Health Check ───────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'erp-portal', port: PORT, chaos: { CHAOS_VALIDATION, CHAOS_SESSION, CHAOS_FLAKY } });
+  res.json({ status: 'ok', service: 'erp-portal', port: PORT, chaos: currentChaos });
 });
 
 // ─── Start Server ───────────────────────────────────────────────
