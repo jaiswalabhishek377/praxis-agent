@@ -1,0 +1,11 @@
+From: Dr. Robert Evans <r.evans@metrohealth.org>
+To: Clinic Operations <ops@globalcorp.com>
+Subject: Outpatient Claim Submission - John Doe
+
+Hi Team,
+
+Could you please file the pending insurance claim for patient John Doe (outpatient X-ray) into the healthcare portal before the end of the day?
+
+Thanks,
+Dr. Robert Evans
+Chief of Outpatient Care

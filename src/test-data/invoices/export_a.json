@@ -1,0 +1,10 @@
+{
+  "invoiceId": "INV-2026-9999",
+  "vendor": "   Acme Corp   ",
+  "invoiceNumber": "AC-1111",
+  "amount": "1,450.00",
+  "currency": "$",
+  "date": "10-15-2026",
+  "dueDate": "11-15-2026",
+  "description": "Server rack maintenance"
+}

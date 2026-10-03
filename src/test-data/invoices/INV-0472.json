@@ -1,0 +1,11 @@
+{
+  "invoiceId": "INV-2026-0472",
+  "vendor": "Acme Corp",
+  "invoiceNumber": "AC-7891",
+  "amount": 1450,
+  "currency": "USD",
+  "date": "2026-10-15",
+  "dueDate": "2026-11-15",
+  "description": "Enterprise software licenses",
+  "notes": "Please remit payment within 30 days."
+}

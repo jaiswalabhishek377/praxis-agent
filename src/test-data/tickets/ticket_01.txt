@@ -1,0 +1,8 @@
+From: Sarah Jenkins <s.jenkins@globalcorp.com>
+To: IT Operations 
+Subject: Urgent: Acme Bill
+
+Hi, can you get Acme's latest bill in before Friday's payment run? I think it's somewhere in the invoices folder. 
+
+Thanks,
+Sarah

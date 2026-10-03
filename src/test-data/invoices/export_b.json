@@ -1,0 +1,8 @@
+{
+  "invoiceId": "INV-2026-9998",
+  "vendor": "Acme Corp",
+  "invoiceNumber": "AC-1112",
+  "date": "2026-10-18",
+  "dueDate": "2026-11-18",
+  "description": "Consulting hours"
+}

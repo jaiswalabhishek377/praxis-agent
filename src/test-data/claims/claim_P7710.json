@@ -1,0 +1,8 @@
+{
+  "claimId": "CLM-2026-9914",
+  "patientId": "P-7710",
+  "patientName": "Alex Wong",
+  "coverageAmount": 300,
+  "dateOfService": "2026-10-18",
+  "status": "pending_submission"
+}

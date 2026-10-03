@@ -1,0 +1,9 @@
+{
+  "claimId": "CLM-2026-9912",
+  "patientId": "P-9821",
+  "patientName": "John Doe",
+  "treatmentCode": "TRT-XRAY",
+  "coverageAmount": 450,
+  "dateOfService": "2026-10-01",
+  "status": "pending_submission"
+}

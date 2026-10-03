@@ -1,0 +1,10 @@
+{
+  "claimId": "CLM-2026-9913",
+  "patientId": "P-4432",
+  "patientName": "Mary Smith",
+  "treatmentCode": "TRT-MRI-09",
+  "coverageAmount": 1200.50,
+  "dateOfService": "2026-10-15",
+  "status": "paid_in_full",
+  "notes": "Settled by patient at point of care via credit card."
+}

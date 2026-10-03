@@ -8,6 +8,15 @@
       "userEnv": "ERP_USER",
       "passEnv": "ERP_PASS",
       "errorSelector": ".error-banner"
+    },
+    "healthcare": {
+      "url": "http://localhost:3002/",
+      "userSelector": "input[name=\"username\"]",
+      "passSelector": "input[name=\"password\"]",
+      "submitSelector": "button[type=\"submit\"]",
+      "userEnv": "HEALTHCARE_USER",
+      "passEnv": "HEALTHCARE_PASS",
+      "errorSelector": ".error"
     }
   }
 }
