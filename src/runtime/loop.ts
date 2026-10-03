@@ -36,17 +36,17 @@ export interface RunResult {
   tracePath?: string;
 }
 
-const MAX_STEPS = 30;
+const MAX_STEPS = parseInt(process.env.MAX_STEPS || '30', 10);
 
 export async function runAgentLoop(
   goal: string,
   playbookContent: string = '',
   approverFn?: (action: string, label: string, values: Record<string, string>) => Promise<boolean>
 ): Promise<RunResult> {
-  console.log(chalk.bold.cyan(`\n🚀 Initializing PraxisAgent for goal:`));
+  console.log(chalk.bold.cyan(`\n🚀 Initializing CentrAgent for goal:`));
   console.log(chalk.white(`"${goal}"\n`));
 
-  const SYSTEM_PROMPT = `You are PraxisAgent, an autonomous AI operations worker.
+  const SYSTEM_PROMPT = `You are CentrAgent, an autonomous AI operations worker.
 Your goal is to accomplish the user's task using the provided tools.
 You operate in a ReAct loop: Understand -> Plan -> Act -> Observe.
 

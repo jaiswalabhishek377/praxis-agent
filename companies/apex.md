@@ -8,4 +8,4 @@
 
 ## Policies
 - Dates in the ERP must be formatted as MM/DD/YYYY
-- High value transactions (>= $1000) will automatically trigger a human-in-the-loop policy gate.
+- Irreversible actions (like clicking "Submit", "Approve", or "Pay") will automatically trigger a human-in-the-loop policy gate.

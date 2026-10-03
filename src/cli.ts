@@ -16,9 +16,12 @@ import fs from 'fs';
 import path from 'path';
 import * as readline from 'readline/promises';
 import { runAgentLoop } from './runtime/loop.js';
+import { verifyRun } from './runtime/verifier.js';
 
 let goal = '';
 let playbookContent = '';
+let expectArg: string | undefined;
+let expectParsed: any;
 
 // Parse args
 const args = process.argv.slice(2);
@@ -38,8 +41,18 @@ for (let i = 0; i < args.length; i++) {
       console.log(chalk.yellow(`⚠️ Warning: Playbook not found at ${playbookPath}`));
     }
     i++; // skip next arg
+  } else if (args[i] === '--expect' && args[i + 1]) {
+    expectArg = args[i + 1];
+    try {
+      expectParsed = JSON.parse(expectArg);
+    } catch (e) {
+      console.error(chalk.red(`\n❌ Invalid JSON passed to --expect: ${(e as Error).message}`));
+      process.exit(1);
+    }
+    i++;
   } else if (!args[i].startsWith('--')) {
     goal = args[i];
+  }
   }
 }
 
@@ -63,6 +76,16 @@ async function main() {
   console.log(chalk.bold.white(`\nGoal: ${goal}\n`));
 
   try {
+    let beforeState: any[] | undefined;
+    try {
+      const res = await fetch('http://localhost:3001/__state', { signal: AbortSignal.timeout(3000) });
+      if (res.ok) {
+        beforeState = (await res.json()).vouchers ?? [];
+      }
+    } catch (e) {
+      // Server not accessible or timeout
+    }
+
     const runResult = await runAgentLoop(goal, playbookContent);
     
     // Write out RunResult for the automated verifier to grab
@@ -72,12 +95,18 @@ async function main() {
     }
     
     const outPath = path.join(runsDir, `${runResult.runId}.json`);
-    fs.writeFileSync(outPath, JSON.stringify(runResult, null, 2));
+    const fullData = { ...runResult, beforeState };
+    fs.writeFileSync(outPath, JSON.stringify(fullData, null, 2));
     console.log(chalk.gray(`\nRun output saved to ${outPath}`));
 
-    if (runResult.status !== 'success') {
-      process.exit(1);
+    let verdict: 'verified' | 'failed' | 'inconclusive' | 'unverified' = 'unverified';
+    if (expectArg) {
+      verdict = await verifyRun(runResult.runId, { expected: expectParsed });
+    } else {
+      console.log(chalk.yellow('⚠ UNVERIFIED: no --expect supplied; agent claim not checked.'));
     }
+
+    process.exit(verdict === 'verified' || (verdict === 'unverified' && runResult.status === 'success') ? 0 : 1);
   } catch (err) {
     console.error(chalk.red.bold('\nFatal Error in Agent Loop:'));
     console.error(err);

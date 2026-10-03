@@ -45,7 +45,8 @@ export async function evaluatePolicyGate(
   const labelStr = targetElement.text || targetElement.label || targetElement.value || 'undefined';
 
   const riskyVerbs = ['submit', 'save', 'pay', 'send', 'delete', 'approve', 'confirm', 'create', 'transfer'];
-  const isSubmit = riskyVerbs.some(verb => labelStr.toLowerCase().includes(verb));
+  // Do not block simple link navigation, even if the link text says 'submit'
+  const isSubmit = targetElement.tagName !== 'a' && riskyVerbs.some(verb => labelStr.toLowerCase().includes(verb));
 
   // If it's a submit action, trigger the human-in-the-loop gate
   if (isSubmit) {

@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 
-// Security: Prevent path traversal outside project workspace
+// Security: Prevent path traversal outside allowed data directory
 function resolveSafePath(userPath: string): string {
-  const root = process.cwd();
-  const resolved = path.resolve(root, userPath);
+  const root = path.resolve(process.cwd(), 'src/test-data');
+  const resolved = path.resolve(process.cwd(), userPath);
   const relative = path.relative(root, resolved);
 
-  // If path tries to escape project root (starts with '..' or is absolute on another drive)
+  // If path tries to escape src/test-data (starts with '..' or is absolute on another drive)
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`Security Violation: Access to path "${userPath}" outside the project directory is blocked.`);
+    throw new Error(`Security Violation: Access to path "${userPath}" outside the allowed "src/test-data" directory is blocked.`);
   }
 
   return resolved;
@@ -72,8 +72,7 @@ export async function list_files(dirPath = 'src/test-data'): Promise<string> {
 
 // Allowlist of text-based file extensions the agent can safely read
 const READABLE_EXTENSIONS = new Set([
-  '.json', '.txt', '.csv', '.md', '.xml', '.html', '.yml', '.yaml',
-  '.ts', '.js', '.py', '.env', '.cfg', '.ini', '.log', '.pdf',
+  '.json', '.txt', '.csv', '.md', '.xml', '.html', '.yml', '.yaml', '.log', '.pdf'
 ]);
 
 // ─── 2. read_file ────────────────────────────────────────────────

@@ -62,6 +62,13 @@ export async function getActivePage(options?: { headless?: boolean; slowMo?: num
     // Strict sandbox routing - block out-of-scope navigation
     await contextInstance.route('**/*', (route) => {
       const url = new URL(route.request().url());
+      
+      // Block the verifier backdoor
+      if (url.pathname.startsWith('/__state')) {
+        console.log(`\n🛡️ Sandbox blocked hidden backdoor: ${url.href}`);
+        return route.abort('accessdenied');
+      }
+
       if (ALLOWED_ORIGINS.includes(url.origin) || url.protocol === 'data:') {
         route.continue();
       } else {
@@ -426,14 +433,19 @@ export async function system_login(system: string): Promise<string> {
   await page.fill(sysConfig.passSelector, passVal);
 
   // Wait for either the error banner OR navigation away from the login page
-  const navigationPromise = page.waitForURL(url => url.href !== sysConfig.url, { timeout: 5000 }).catch(() => null);
+  const navigationPromise = page.waitForURL(url => url.href !== sysConfig.url, { timeout: 3000 }).catch(() => null);
   await page.click(sysConfig.submitSelector);
   await navigationPromise;
 
-  const errorBanner = await page.locator(sysConfig.errorSelector || '.error-banner').count();
-  if (errorBanner > 0) {
-    const errorMsg = await page.locator(sysConfig.errorSelector || '.error-banner').innerText();
-    throw new Error(`Login failed for ${system}: ${errorMsg.trim()}`);
+  // Check if we are still on the login page
+  if (page.url() === sysConfig.url || page.url().endsWith('/login')) {
+    // Try to find the configured error banner, or fallback to general error classes
+    const errLocator = page.locator(`${sysConfig.errorSelector || '.error-banner'}, .error, .alert`);
+    if (await errLocator.count() > 0) {
+      const errorMsg = await errLocator.first().innerText();
+      throw new Error(`Login failed for ${system}: ${errorMsg.trim()}`);
+    }
+    throw new Error(`Login failed for ${system}: Unknown error (URL did not change)`);
   }
 
   return `System login executed securely for ${system}. Navigation successful.`;

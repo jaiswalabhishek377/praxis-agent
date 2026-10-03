@@ -5,3 +5,5 @@ dist/
 artifacts/*.png
 artifacts/*.json
 !artifacts/.gitkeep
+
+runs/
