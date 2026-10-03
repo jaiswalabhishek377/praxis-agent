@@ -393,11 +393,8 @@ export async function browser_select(ref: number, value: string): Promise<string
 export async function browser_screenshot(name = 'proof'): Promise<string> {
   const page = await getActivePage();
   const artifactsDir = path.resolve(process.cwd(), 'artifacts');
-  if (!fs.existsSync(artifactsDir)) {
-    fs.mkdirSync(artifactsDir, { recursive: true });
-  }
-
   const filePath = path.join(artifactsDir, `${name}.png`);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   await page.screenshot({ path: filePath, fullPage: true });
   return filePath;
 }
@@ -429,23 +426,36 @@ export async function system_login(system: string): Promise<string> {
   }
 
   await page.goto(sysConfig.url, { waitUntil: 'domcontentloaded' });
+  
+  // Simulate realistic typing speed for the demo audience
+  await page.waitForTimeout(600);
   await page.fill(sysConfig.userSelector, userVal);
+  await page.waitForTimeout(400);
   await page.fill(sysConfig.passSelector, passVal);
+  await page.waitForTimeout(600); // Pause so they can see the credentials before clicking
 
   // Wait for either the error banner OR navigation away from the login page
   const navigationPromise = page.waitForURL(url => url.href !== sysConfig.url, { timeout: 3000 }).catch(() => null);
   await page.click(sysConfig.submitSelector);
   await navigationPromise;
+  
+  // Add a slight delay on the dashboard
+  await page.waitForTimeout(1000);
 
-  // Check if we are still on the login page
-  if (page.url() === sysConfig.url || page.url().endsWith('/login')) {
-    // Try to find the configured error banner, or fallback to general error classes
-    const errLocator = page.locator(`${sysConfig.errorSelector || '.error-banner'}, .error, .alert`);
-    if (await errLocator.count() > 0) {
-      const errorMsg = await errLocator.first().innerText();
+  // Check if an error banner is displayed or if we are still on the login page
+  const errLocator = page.locator(`${sysConfig.errorSelector || '.error-banner'}, .error, .alert, #error-msg, #error-banner`);
+  if (await errLocator.count() > 0) {
+    const errorMsg = await errLocator.first().innerText();
+    if (errorMsg.trim()) {
       throw new Error(`Login failed for ${system}: ${errorMsg.trim()}`);
     }
-    throw new Error(`Login failed for ${system}: Unknown error (URL did not change)`);
+  }
+
+  const currentParsed = new URL(page.url());
+  const configParsed = new URL(sysConfig.url);
+  const isLoginPage = currentParsed.pathname === configParsed.pathname || page.url().endsWith('/login');
+  if (isLoginPage && (page.url() === sysConfig.url || page.url().includes('error'))) {
+    throw new Error(`Login failed for ${system}: Navigation failed (still on login page)`);
   }
 
   return `System login executed securely for ${system}. Navigation successful.`;

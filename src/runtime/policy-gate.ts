@@ -68,6 +68,12 @@ export async function evaluatePolicyGate(
       };
     }
 
+    if (process.env.AUTO_APPROVE === 'true') {
+      console.log(chalk.bgYellow.black.bold(`\n ⚡ AUTO-APPROVED (audit-logged): click "${labelStr}" `));
+      for (const [k, v] of Object.entries(values)) console.log(chalk.yellow(`   ${k}: ${v}`));
+      return { approved: true, reason: 'auto-approve flag', kind: 'auto' };
+    }
+
     console.log(chalk.bgRed.white.bold(`\n ⚠️ POLICY GATE: IRREVERSIBLE ACTION DETECTED `));
     console.log(chalk.red(` Agent is attempting to click: "${labelStr}"`));
     
@@ -89,7 +95,7 @@ export async function evaluatePolicyGate(
 
     const approved = answer.trim().toLowerCase() === 'y';
     if (!approved) {
-      console.log(chalk.gray(' Action rejected by user.'));
+      console.log(chalk.white(' Action rejected by user.'));
       return { approved: false, reason: 'REJECTED by the human policy gate.', kind: 'human' };
     }
     console.log(chalk.green(' Action approved.'));

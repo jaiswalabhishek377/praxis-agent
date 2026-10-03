@@ -468,6 +468,17 @@ export async function callModel<T = AgentAction>(options: {
     throw new Error('No LLM API keys configured. Set GEMINI_API_KEY or GROQ_API_KEY in .env');
   }
 
+  const disableFallback = process.env.DISABLE_FALLBACK === 'true';
+  const primaryModel = process.env.PRIMARY_MODEL;
+
+  const geminiModels = primaryModel && !primaryModel.startsWith('groq') && !primaryModel.startsWith('llama') && !primaryModel.startsWith('openai/')
+    ? (disableFallback ? [primaryModel] : [primaryModel, ...GEMINI_CASCADE.filter((m) => m !== primaryModel)])
+    : (disableFallback ? [GEMINI_CASCADE[0]] : GEMINI_CASCADE);
+
+  const groqModels = primaryModel && (primaryModel.startsWith('groq') || primaryModel.startsWith('llama') || primaryModel.startsWith('openai/'))
+    ? (disableFallback ? [primaryModel] : [primaryModel, ...GROQ_CASCADE.filter((m) => m !== primaryModel)])
+    : (disableFallback ? [GROQ_CASCADE[0]] : GROQ_CASCADE);
+
   const attempts: AttemptTrace[] = [];
 
   try {
@@ -475,7 +486,7 @@ export async function callModel<T = AgentAction>(options: {
     if (geminiKey && !isBreakerOpen(geminiBreaker)) {
       let authFailed = false;
 
-      for (const model of GEMINI_CASCADE) {
+      for (const model of geminiModels) {
         const start = Date.now();
         try {
           const caller = (sys: string, usr: string) =>
@@ -528,6 +539,10 @@ export async function callModel<T = AgentAction>(options: {
             recordFailure(geminiBreaker);
             break; // Stop immediately on bad auth
           }
+
+          if (disableFallback) {
+            break;
+          }
         }
       }
 
@@ -536,11 +551,11 @@ export async function callModel<T = AgentAction>(options: {
       }
     }
 
-    // 2. Groq Multi-Model Fallback Cascade
-    if (groqKey && !isBreakerOpen(groqBreaker)) {
+    // 2. Groq Multi-Model Fallback Cascade (skipped if fallback disabled after trying primary)
+    if (groqKey && !isBreakerOpen(groqBreaker) && !(disableFallback && geminiKey)) {
       let authFailed = false;
 
-      for (const model of GROQ_CASCADE) {
+      for (const model of groqModels) {
         const start = Date.now();
         try {
           const caller = (sys: string, usr: string) =>
@@ -590,6 +605,10 @@ export async function callModel<T = AgentAction>(options: {
           if (err.status === 401 || err.status === 403) {
             authFailed = true;
             recordFailure(groqBreaker);
+            break;
+          }
+
+          if (disableFallback) {
             break;
           }
         }

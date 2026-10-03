@@ -54,12 +54,14 @@ ${playbookContent ? `COMPANY KNOWLEDGE BASE (PLAYBOOK):\n${playbookContent}\n` :
 RULES:
 1. You must figure out the steps yourself. Do not ask for help unless you are truly stuck or need human disambiguation.
 2. The environment may have chaos (flaky buttons, validation errors, session timeouts). If an action fails, READ the error message, adapt your plan, and try again.
-3. For web apps, you interact via numeric "ref" IDs from the DOM snapshot, NOT CSS selectors.
-4. Report what you observed. An independent verifier will check your result.
-5. When the goal is fully achieved, call the 'finish' action with a summary and evidence.
-6. Think step-by-step in the 'thought' field before choosing an 'action'.
-7. Use system_login for authentication.
-8. Refs change after every action, so use only the CURRENT PAGE section for the current state.
+3. If asked to find the "latest" or "correct" file among multiple candidates, you MUST open and read EVERY candidate file in the folder, of ANY type (.json, .pdf, .txt). Compare the dates inside each file, ignore invoices that are already paid, duplicated, or missing required fields (e.g. no amount), then pick the newest valid one. Never decide before every file in the listing has been read.
+3b. If the portal rejects your submission (e.g. duplicate), do NOT switch to a different invoice just to get something submitted. Re-check whether you picked the correct invoice; if the chosen one is truly a duplicate, call finish with status "failed" or use ask_user.
+4. For web apps, you interact via numeric "ref" IDs from the DOM snapshot, NOT CSS selectors.
+5. Report what you observed. An independent verifier will check your result.
+6. When the goal is fully achieved, call the 'finish' action with a summary and evidence.
+7. Think step-by-step in the 'thought' field before choosing an 'action'.
+8. Use system_login for authentication.
+9. Refs change after every action, so use only the CURRENT PAGE section for the current state.
 `;
 
   const tracker = new RunTracker();
@@ -94,7 +96,7 @@ RULES:
 
   try {
     while (step <= MAX_STEPS && !isFinished) {
-      console.log(chalk.gray(`\n--- Step ${step} ---`));
+      console.log(chalk.white(`\n--- Step ${step} ---`));
       const spinner = ora({ text: 'Thinking...', color: 'cyan' }).start();
 
       const userPrompt = history.join('\n\n') + 
@@ -124,7 +126,7 @@ RULES:
       spinner.succeed(chalk.green(`Thought: ${result.data.thought}`));
       console.log(chalk.magenta(`Action: ${result.data.action}`));
       if (Object.keys(result.data.params).length > 0) {
-        console.log(chalk.gray(`Params: ${JSON.stringify(result.data.params)}`));
+        console.log(chalk.white(`Params: ${JSON.stringify(result.data.params)}`));
       }
 
       const { action, params } = result.data;
@@ -167,6 +169,12 @@ RULES:
 
       let actionResult = '';
       let appendSnapshot = false;
+      let shotName = '';
+
+      // Proof of what was about to be submitted (only around clicks, not every step)
+      if (action === 'browser_click') {
+        try { await browser_screenshot(`${runId}/step-${step}_before-click`); } catch { /* non-fatal */ }
+      }
 
       spinner.start(chalk.cyan(`Executing ${action}...`));
 
@@ -234,14 +242,17 @@ RULES:
             console.log(chalk.yellow(`[Warning: Failed to capture auto-snapshot: ${snapErr.message}]`));
             currentDom = null;
           }
-          try {
-            await browser_screenshot(`${runId}_step-${step}`);
-          } catch (picErr: any) {
-            console.log(chalk.yellow(`[Warning: Failed to capture screenshot: ${picErr.message}]`));
+          if (action === 'browser_click') {
+            try {
+              await browser_screenshot(`${runId}/step-${step}_after-click`);
+              shotName = `${runId}/step-${step}_after-click.png`;
+            } catch (picErr: any) {
+              console.log(chalk.yellow(`[Warning: Failed to capture screenshot: ${picErr.message}]`));
+            }
           }
         }
 
-        console.log(chalk.gray(actionResult.length > 500 ? actionResult.substring(0, 500) + '... [truncated]' : actionResult));
+        console.log(chalk.white(actionResult.length > 500 ? actionResult.substring(0, 500) + '... [truncated]' : actionResult));
 
         // Record purely text-based history
         history.push(
@@ -257,7 +268,7 @@ RULES:
           observation: actionResult.substring(0, 500) + (actionResult.length > 500 ? '...' : ''),
           model: result.model,
           provider: result.provider,
-          screenshot: appendSnapshot ? `${runId}_step-${step}.png` : '',
+          screenshot: shotName,
           error: null
         });
 
@@ -307,8 +318,24 @@ RULES:
   const summary = tracker.getSummary();
   console.log(chalk.bold.white(`\n=== Run Summary ===`));
   console.log(`Status:        ${finalStatus.toUpperCase()}`);
+  
+  // INTERVIEW TALKING POINT: 
+  // If they ask "How do you handle multiple LLM providers?", explain the Adapter pattern here.
+  // You can easily swap process.env.GEMINI_MODEL for process.env.GROQ_MODEL, or better yet,
+  // read `adapter.defaultModel` if you build a GroqAdapter that implements the same interface.
+  const activeModel = process.env.GROQ_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+  
+  // Format the detailed model usage (e.g. "gemini-3.5-flash-lite: 10x, groq-llama3: 1x")
+  const usageDetail = Object.entries(summary.modelUsage)
+    .map(([model, count]) => `${model}: ${count}x`)
+    .join(', ');
+
+  console.log(`Model(s):      ${usageDetail || activeModel}`);
   console.log(`Total Steps:   ${step > 1 ? step - 1 : 0}`);
   console.log(`Total Tokens:  ${summary.totalTokens} (Prompt: ${summary.promptTokens}, Completion: ${summary.completionTokens})`);
+  if (summary.fallbackEvents > 0) {
+    console.log(`Fallbacks:     ${summary.fallbackEvents} (Agent recovered from API errors)`);
+  }
   
   return {
     runId,

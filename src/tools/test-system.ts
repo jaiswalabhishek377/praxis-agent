@@ -11,7 +11,7 @@ async function testFileAndSystemTools() {
 
   // 2. Test read_file on JSON invoice
   console.log('\n2. Testing read_file on latest invoice...');
-  const invoiceContent = await read_file('src/test-data/invoices/apex_health.json');
+  const invoiceContent = await read_file('src/test-data/invoices/INV-0472.json');
   console.log('First 200 chars:\n', invoiceContent.slice(0, 200));
 
   // 3. Test Security Sandbox (Path Traversal Protection)

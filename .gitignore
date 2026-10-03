@@ -7,3 +7,5 @@ artifacts/*.json
 !artifacts/.gitkeep
 
 runs/
+
+artifacts/

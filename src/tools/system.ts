@@ -9,11 +9,12 @@ export interface FinishParams {
 
 // ─── 1. ask_user ─────────────────────────────────────────────────
 export async function ask_user(question: string): Promise<string> {
+  const autoAnswer = process.env.AUTO_ANSWER || process.env.EVAL_ASK_REPLY;
   // If automated answer is configured (used in CI or automated evaluation harness)
-  if (process.env.AUTO_ANSWER) {
+  if (autoAnswer) {
     console.log(chalk.cyan(`\n💬 [Agent Question]: ${question}`));
-    console.log(chalk.gray(`   [Auto-Answer]: ${process.env.AUTO_ANSWER}`));
-    return process.env.AUTO_ANSWER;
+    console.log(chalk.gray(`   [Auto-Answer]: ${autoAnswer}`));
+    return autoAnswer;
   }
 
   return new Promise((resolve) => {

@@ -4,8 +4,18 @@ import path from 'path';
 // Security: Prevent path traversal outside allowed data directory
 function resolveSafePath(userPath: string): string {
   const root = path.resolve(process.cwd(), 'src/test-data');
-  const resolved = path.resolve(process.cwd(), userPath);
-  const relative = path.relative(root, resolved);
+  let resolved = path.resolve(process.cwd(), userPath);
+  let relative = path.relative(root, resolved);
+
+  // If path is outside src/test-data, check if it was given relative to src/test-data
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    const candidatePath = path.resolve(root, userPath);
+    const candidateRelative = path.relative(root, candidatePath);
+    if (!candidateRelative.startsWith('..') && !path.isAbsolute(candidateRelative)) {
+      resolved = candidatePath;
+      relative = candidateRelative;
+    }
+  }
 
   // If path tries to escape src/test-data (starts with '..' or is absolute on another drive)
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -108,14 +118,16 @@ export async function read_file(filePath: string): Promise<string> {
 
   // PDF files
   if (ext === '.pdf') {
+    const dataBuffer = fs.readFileSync(safePath);
     try {
       const pdfParseModule = await import('pdf-parse');
       const pdfParse = (pdfParseModule.default || pdfParseModule) as (dataBuffer: Buffer) => Promise<{ text: string }>;
-      const dataBuffer = fs.readFileSync(safePath);
       const data = await pdfParse(dataBuffer);
       return `File: ${filePath} (PDF Extracted Text):\n` + data.text.trim();
     } catch (err: any) {
-      throw new Error(`Failed to parse PDF file "${filePath}": ${err.message}`);
+      // Fallback: If pdf-parse crashes (common on some Windows setups), extract raw text from uncompressed PDF
+      const rawText = dataBuffer.toString('utf-8').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ');
+      return `File: ${filePath} (Raw PDF Text Fallback):\n` + rawText.trim();
     }
   }
 
