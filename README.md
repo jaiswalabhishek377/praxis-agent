@@ -1,34 +1,96 @@
-# PraxisAgent (CentrAgent) — Autonomous AI Operations Worker
+# PraxisAgent — Autonomous AI Operations Worker
 
-An enterprise-grade, autonomous ReAct agent designed to execute end-to-end IT, ERP, and healthcare operations workflows across multi-system environments with deterministic safety gates, fault-tolerant chaos recovery, and independent state verification.
+An autonomous operations worker designed to execute end-to-end IT, ERP, and healthcare workflows across multi-system environments with element-referenced browser automation, deterministic safety gates, fault-tolerant chaos recovery, and independent state verification.
 
 ---
 
-## 🌟 Key Architectural Pillars
+## 🌟 Architecture & Core Principles
 
-1. **$O(1)$ Context Memory & DOM Isolation**:
-   Maintains a compact turn transcript without history bloat. Interactive DOM elements are referenced via dynamic numeric `[ref]` IDs (~150–300 tokens) updated on each turn, preventing context degradation.
+1. **Ephemeral DOM Snapshotting**:
+   Rather than passing full HTML trees or maintaining bloated context, the agent operates via a compact numbered-element view (`[ref]` IDs, ~150–300 tokens per turn). Old DOM snapshots are pruned each turn while preserving the sequential text transcript, preventing context degradation.
 
-2. **Deterministic Multi-Tier Loop Detection**:
-   Tracks cyclic action-state combinations across a 6-turn sliding window. Automatically intervenes with corrective guidance before wasteful token consumption occurs.
+2. **State-Action Hash Loop Detection**:
+   Tracks execution state by computing a SHA-256 hash of `(page_state, action, params)`. If the agent repeats the exact same action in the exact same state 3 times without environmental progress, it aborts to prevent token waste and prompts replanning.
 
-3. **Code-Level Human-in-the-Loop (HITL) Policy Gate**:
-   Deterministic policy firewall that intercepts high-risk or irreversible mutations (e.g. `submit`, `pay`, `approve`, `confirm`). Enforces human or automated approver sign-off and cleanly halts with audit proof if denied.
+3. **Deterministic Human-in-the-Loop (HITL) Policy Gate**:
+   A code-level safety firewall that intercepts risky action verbs (`submit`, `pay`, `approve`, `confirm`, `delete`). It displays the extracted form values, requests explicit human approval (`[y/N]`), and defaults to deny in non-interactive terminals. If denied, the agent halts safely with zero unauthorized database mutations.
 
 4. **Multi-Model Provider Cascade & Circuit Breakers**:
-   Dynamic failover architecture across model tiers (`gemini-3.5-flash-lite` → `gemini-flash-lite-latest` → `gemini-3-flash-preview` → `gemini-3.6-flash` / Groq). Catches HTTP 429 rate limits, context overflows, or provider outages with exponential backoff and transparent recovery.
+   A 4-tier failover sequence across Gemini models (`gemini-3.5-flash-lite` → `gemini-flash-lite-latest` → `gemini-3-flash-preview` → `gemini-3.6-flash`), with optional Groq SDK fallback (`llama-3.3-70b-versatile`). Automatically catches HTTP 429 rate limits, context overflows, or provider outages with exponential backoff.
 
-5. **Zero-Knowledge System Login**:
-   Eliminates credential leakage into LLM context prompts. The agent issues `system_login({ system: "erp" | "healthcare" })` and the runtime injects validated environment secrets directly into browser session storage.
+5. **Credential Isolation via `system_login`**:
+   The agent is never given raw passwords in its prompt context. Instead, it issues `system_login({ system: "erp" | "healthcare" })`, and the runtime directly injects validated environment secrets into browser session storage.
 
-6. **Independent State & DB Verifier**:
-   Post-execution verification layer that inspects underlying databases and state endpoints independently of the LLM's self-reported summary, catching false claims, duplicate submissions, or data formatting mismatches.
+6. **Independent State & Database Verifier**:
+   An out-of-band verification layer unreachable by the agent's browser queries the target portal's database (`:3001/__state`, `:3002/__state`). It objectively verifies record creation, amount matching, and duplicate prevention against source documents, generating audit dossiers (`audit_dossier.json`) with screenshot proof.
+
+---
+
+## 🚀 Setup & Execution Guide
+
+### 1. Prerequisites & Installation
+* **Node.js**: v18+ or v20+ recommended.
+* Clone the repository and install dependencies:
+```bash
+git clone https://github.com/jaiswalabhishek377/praxis-agent.git
+cd praxis-agent
+npm install
+```
+
+### 2. Environment Configuration
+Create a `.env` file in the project root:
+```env
+GEMINI_API_KEY="your-gemini-api-key"
+ERP_URL="http://localhost:3001"
+CLAIMS_URL="http://localhost:3002"
+```
+
+### 3. Start Simulated Enterprise Portals
+Launch the mock ERP (`:3001`) and Healthcare (`:3002`) portals in a separate terminal:
+```bash
+npm run dev:apps
+```
+*(Keep this terminal open while running the agent).*
+
+---
+
+## 🤖 Running the Autonomous Agent (CLI)
+
+To launch the interactive CLI with company context:
+```bash
+npx tsx src/cli.ts --company globalcorp
+```
+
+When prompted:
+```
+🤖 What would you like me to do? 
+>
+```
+
+### Example Prompts to Try:
+
+1. **Unstructured Invoice Resolution (PDF Parsing & ERP Entry)**:
+   ```
+   Find the latest invoice from Company Acme Corp, extract the amount and due date, enter it into our internal system, and tell me once it is done.
+   ```
+   *The agent will inspect incoming files, compare internal dates, skip paid invoices, parse the unstructured PDF (`scan_0003.pdf`), log in to ERP, trigger the human approval gate, and submit.*
+
+2. **Multi-System Healthcare Claim Routing**:
+   ```
+   Check my tickets for Dr. Evans's email and handle the claim request
+   ```
+   *The agent will read `tickets/ticket_02.txt`, deduce that this is a clinical claim, locate patient `P-9821`, route to the Healthcare portal (`:3002`), and file the outpatient claim.*
+
+3. **Autonomous Ticket Handling**:
+   ```
+   Take care of the request in tickets/ticket_01.txt
+   ```
 
 ---
 
 ## 📊 Evaluation & Benchmark Results
 
-PraxisAgent was evaluated across **9 end-to-end benchmark scenarios** spanning single-system ERP voucher entries, cross-system healthcare claims, multi-document ambiguity resolution, chaos injections (portal validation errors, session dropouts, flaky DOM submit buttons), and approval-denial safety gates.
+PraxisAgent was benchmarked across **9 end-to-end evaluation scenarios** covering core operations, cross-system routing, injected chaos (validation errors, session dropouts, flaky DOM submit buttons), and approval-denial safety gates.
 
 ### 1. Standard Benchmark Suite (Optimal API Conditions)
 *Verified: 9/9 (100% pass rate, 0 false claims)*
@@ -66,45 +128,15 @@ PraxisAgent was evaluated across **9 end-to-end benchmark scenarios** spanning s
 
 ---
 
-## 🛠️ Getting Started
-
-### 1. Installation
+### Running the Evaluation Suite
 ```bash
-npm install
-```
-
-### 2. Environment Configuration
-Create a `.env` file in the root directory:
-```env
-GEMINI_API_KEY="your-gemini-api-key"
-ERP_URL="http://localhost:3001"
-CLAIMS_URL="http://localhost:3002"
-```
-
-### 3. Start Mock Enterprise Portals
-In a separate terminal, launch the mock ERP and Healthcare portals:
-```bash
-npm run dev:apps
-```
-* **ERP Portal**: `http://localhost:3001`
-* **Healthcare Portal**: `http://localhost:3002`
-
----
-
-## 🧪 Running Evaluations
-
-### Run Full Benchmark Suite
-```bash
+# Run all 9 scenarios
 npx tsx src/eval/harness.ts
-```
 
-### Run a Single Scenario (Development Mode)
-```bash
+# Run an individual scenario
 npx tsx src/eval/harness.ts --only SC-02
-```
 
-### Resume Evaluation (Skip Settled Runs)
-```bash
+# Resume evaluation (skips already verified runs)
 npx tsx src/eval/harness.ts --resume
 ```
 
@@ -124,9 +156,9 @@ npx tsx src/eval/harness.ts --resume
 
 ---
 
-## 📁 Artifacts & Audit Dossiers
-For every execution run, complete audit trails are preserved:
-* Run metrics and step traces: `runs/<run-id>.json`
-* Step-by-step logs: `runs/<run-id>.jsonl`
-* Visual proof screenshots: `artifacts/<run-id>/step-X_after-click.png`
-* Verifier audit dossier: `artifacts/<run-id>/audit_dossier.json`
+## 📁 Audit Dossiers & Artifacts
+When executing tasks, PraxisAgent preserves complete local audit trails:
+* **Trace Logs**: `runs/<run-id>.jsonl`
+* **Run Metrics**: `runs/<run-id>.json`
+* **Visual Screenshots**: `artifacts/<run-id>/step-X_after-click.png`
+* **Verification Dossier**: `artifacts/<run-id>/audit_dossier.json`

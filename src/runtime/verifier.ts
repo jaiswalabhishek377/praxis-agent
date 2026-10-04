@@ -66,7 +66,8 @@ export function checkRecords(exp: Expectation, before: any[] | undefined, after:
   const r = mine[0];
   if (r) {
     if (isHealthcare) {
-      if (r.amount !== exp.amount) reasons.push(`Amount mismatch: DB ${r.amount}, expected ${exp.amount}.`);
+      const dbAmt = typeof r.amount === "string" ? parseFloat(r.amount.replace(/[^\d.-]/g, "")) : Number(r.amount);
+      if (Math.round(dbAmt * 100) !== Math.round(Number(exp.amount) * 100)) reasons.push(`Amount mismatch: DB ${r.amount}, expected ${exp.amount}.`);
     } else {
       if (!String(r.vendor_name).toLowerCase().includes(String(exp.vendor).toLowerCase()))
         reasons.push(`Vendor mismatch: "${r.vendor_name}".`);
@@ -82,7 +83,7 @@ export function checkRecords(exp: Expectation, before: any[] | undefined, after:
   return reasons;
 }
 
-export function deriveExpectation(runId: string): { expected: Expectation; warnings: string[] } | null {
+export async function deriveExpectation(runId: string): Promise<{ expected: Expectation; warnings: string[] } | null> {
   const tracePath = path.resolve(`runs/${runId}.jsonl`);
   if (!fs.existsSync(tracePath)) return null;
 
@@ -128,22 +129,38 @@ export function deriveExpectation(runId: string): { expected: Expectation; warni
   if (!targetInvoicePath) return null;
 
   if (targetInvoicePath.toLowerCase().endsWith('.pdf')) {
-    const raw = fileObservations[targetInvoicePath] || fs.readFileSync(path.resolve(targetInvoicePath), 'utf8');
-    const invMatch = raw.match(/Invoice\s*Number:\s*([A-Z0-9-]+)/i) || raw.match(/\b(AC-\d+)\b/i);
-    const amtMatch = raw.match(/(?:TOTAL\s*DUE|Total|Amount):\s*\$?([\d,]+\.?\d*)/i);
-    const dueMatch = raw.match(/Due\s*Date:\s*.*?\((.*?)\)/i) || raw.match(/Due\s*Date:\s*([^\n\r,]+)/i);
-    const vendorMatch = raw.match(/([A-Z0-9\s]+(?:CORP|INC|LLC|LTD|SOLUTIONS))/i);
+    let raw = fileObservations[targetInvoicePath] || '';
+    if (!raw) {
+      try {
+        const pdfParseModule = await import('pdf-parse');
+        const pdfParse = (pdfParseModule.default || pdfParseModule) as any;
+        const pdfData = await pdfParse(fs.readFileSync(path.resolve(targetInvoicePath)));
+        raw = pdfData?.text || '';
+      } catch {}
+    }
+    const normalized = raw.replace(/\r?\n/g, ' ');
+    const invMatch = normalized.match(/(?:Invoice\s*(?:Number|No|#)?\s*[:]?\s*)([A-Z0-9-]+)/i) || normalized.match(/\b([A-Z]{2,}-\d{3,})\b/i);
+    const amtMatch = normalized.match(/(?:TOTAL\s*(?:DUE)?|Total|Subtotal|Amount\s*Due|Amount)\s*[:]?\s*\$?\s*([\d,]+(?:\s*\.\s*\d{2})?)/i)
+      || normalized.match(/\$\s*([\d,]+(?:\s*\.\s*\d{2})?)/i);
+    const dueMatch = normalized.match(/Due\s*Date\s*[:]?\s*(?:Net\s*\d+\s*)?\(?([A-Za-z0-9\s,/-]+)\)?/i);
+    const vendorMatch = normalized.match(/([A-Z0-9\s.,&-]+(?:CORP|INC|LLC|LTD|SOLUTIONS|HEALTHCARE|SYSTEMS))/i);
 
-    const rawAmt = amtMatch ? amtMatch[1].replace(/,/g, '') : (raw.includes('2,450') ? '2450' : '0');
-    const invNumber = invMatch ? (invMatch[1] || invMatch[0]).trim() : "AC-8888";
+    let parsedAmount = 0;
+    if (amtMatch) {
+      const cleaned = amtMatch[1].replace(/[\s,]/g, '');
+      parsedAmount = parseFloat(cleaned) || 0;
+    }
+    const invNumber = invMatch ? invMatch[1].trim() : '';
+    const vendor = vendorMatch ? vendorMatch[1].trim().replace(/\s+(LLC|Inc\.?|Ltd\.?|Corp\.?)$/i, '') : '';
+    const dueDate = dueMatch ? isoDate(dueMatch[1].trim()) ?? undefined : undefined;
 
     return {
       expected: {
         kind: "created",
-        vendor: vendorMatch ? vendorMatch[1].trim().replace(/\s+(LLC|Inc\.?|Ltd\.?|Corp\.?)$/i, "") : "Acme Corp",
+        vendor,
         invoiceNumber: invNumber,
-        amount: parseFloat(rawAmt),
-        dueDate: dueMatch ? isoDate(dueMatch[1].trim()) ?? undefined : '2026-11-18'
+        amount: parsedAmount,
+        dueDate
       },
       warnings: []
     };
@@ -255,7 +272,8 @@ export async function verifyRun(runId: string, config: VerifierConfig & { warnin
     } catch {}
 
     const dossierPath = path.join(runDir, "audit_dossier.json");
-    fs.writeFileSync(dossierPath, JSON.stringify({ runId, verdict, reasons, finalScreenshot: lastShot }, null, 2));
+    const dossierReasons = reasons.length > 0 ? reasons : ["Record successfully matched all expectations."];
+    fs.writeFileSync(dossierPath, JSON.stringify({ runId, verdict, reasons: dossierReasons, finalScreenshot: lastShot }, null, 2));
     
     console.log(chalk.bold.white(`\nOUTPUT ARTIFACTS:`));
     console.log(chalk.white(`\uD83D\uDCC4 audit_dossier.json: ${dossierPath}`));

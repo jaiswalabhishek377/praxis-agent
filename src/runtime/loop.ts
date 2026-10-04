@@ -267,7 +267,7 @@ RULES:
           thought: result.data.thought,
           action,
           params,
-          observation: actionResult.substring(0, 500) + (actionResult.length > 500 ? '...' : ''),
+          observation: action === 'read_file' ? actionResult.substring(0, 10000) : (actionResult.substring(0, 500) + (actionResult.length > 500 ? '...' : '')),
           model: result.model,
           provider: result.provider,
           screenshot: shotName,

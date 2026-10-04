@@ -9,3 +9,5 @@ artifacts/*.json
 runs/
 artifacts/
 eval-results.*.json
+make_pdf.cjs
+architecture.mmd

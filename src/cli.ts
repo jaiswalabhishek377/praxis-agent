@@ -111,7 +111,7 @@ async function main() {
     if (expectArg) {
       verdict = await verifyRun(runResult.runId, { expected: expectParsed });
     } else {
-      const derived = deriveExpectation(runResult.runId);
+      const derived = await deriveExpectation(runResult.runId);
       if (derived) {
         console.log(chalk.white('ℹ No --expect supplied: derived expected values from the source invoice on disk.'));
         verdict = await verifyRun(runResult.runId, { expected: derived.expected, warnings: derived.warnings });
