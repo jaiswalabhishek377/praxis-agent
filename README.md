@@ -4,7 +4,7 @@ An autonomous operations worker designed to execute end-to-end IT, ERP, and heal
 
 ---
 
-## 🌟 Architecture & Core Principles
+## ※ Architecture & Core Principles
 
 1. **Ephemeral DOM Snapshotting**:
    Rather than passing full HTML trees or maintaining bloated context, the agent operates via a compact numbered-element view (`[ref]` IDs, ~150–300 tokens per turn). Old DOM snapshots are pruned each turn while preserving the sequential text transcript, preventing context degradation.
@@ -23,6 +23,63 @@ An autonomous operations worker designed to execute end-to-end IT, ERP, and heal
 
 6. **Independent State & Database Verifier**:
    An out-of-band verification layer unreachable by the agent's browser queries the target portal's database (`:3001/__state`, `:3002/__state`). It objectively verifies record creation, amount matching, and duplicate prevention against source documents, generating audit dossiers (`audit_dossier.json`) with screenshot proof.
+
+---
+
+## 🛠️ Tech Stack
+
+* **Core Runtime & Language**: TypeScript 5.7, Node.js (ES Modules, executed directly via `tsx`)
+* **Agent Architecture**: Hand-written sequential ReAct execution loop (zero heavy agent frameworks or wrapper dependencies)
+* **LLM Providers & Multi-Model Cascade**:
+  * **Primary (Google Gemini REST API / `@google/generative-ai`)**: `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3-flash-preview`, `gemini-3.6-flash`
+  * **Fallback (Groq Cloud SDK `groq-sdk`)**: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `llama-3.3-70b-versatile`
+* **Browser Automation & Perception**: Playwright (`chromium`), Ephemeral Numbered DOM Distillation (`[ref]` IDs), Sandboxed Origin Enforcer
+* **Safety & Resiliency**:
+  * **Schema Enforcement**: Zod (strict JSON schema validation, parameter coercion, and 1-turn schema repair)
+  * **Fault Resilience**: `p-retry` (exponential backoff for HTTP 429/5xx), per-provider Circuit Breakers, SHA-256 State-Action Loop Detector
+  * **Policy Gate**: Interactive human-in-the-loop CLI gate with non-interactive terminal safe fallback
+* **Simulated Enterprise Infrastructure**: Express v4, `sql.js` (in-memory SQLite database with state inspection endpoints), injected chaos middleware (session dropouts, flaky DOM events, form validation errors)
+* **Document Ingestion**: `pdf-parse` (unstructured PDF invoice data extraction), Native Node.js `fs` / `path`
+* **CLI & Telemetry**: `chalk`, `ora`, `readline/promises`, full per-step JSONL tracing and screenshot capture
+
+---
+
+## 📂 Project Structure & Folder Architecture
+
+```text
+praxis-agent/
+├── companies/                     # Company-specific organizational knowledge
+│   └── globalcorp.md              # Systems, credentials policy, file routing rules
+├── eval-results.json              # Machine-readable 9/9 benchmark evaluation dataset
+├── eval-results.md                # Markdown benchmark report across all test runs
+├── package.json                   # Project dependencies and script declarations
+├── tsconfig.json                  # TypeScript compiler configuration
+└── src/
+    ├── cli.ts                     # Interactive CLI entrypoint (npx tsx src/cli.ts)
+    ├── eval/
+    │   └── harness.ts             # 9-scenario evaluation runner with chaos injection
+    ├── mock-apps/                 # Simulated multi-system enterprise environments
+    │   ├── erp-portal/            # Accounting & ERP system (Express + SQLite via sql.js)
+    │   │   ├── server.ts          # Backend routes (/login, /vouchers, /__state, /__reset)
+    │   │   └── public/            # Client interface (login view, voucher entry form)
+    │   └── healthcare-portal/     # Medical claims system
+    │       ├── server.ts          # Backend routes (/login, /submit-claim, /__state)
+    │       └── public/            # Claims filing interface
+    ├── runtime/                   # Hand-written autonomous agent engine
+    │   ├── adapter.ts             # Multi-model cascade, circuit breaker & schema repair
+    │   ├── loop.ts                # Main ReAct loop, ephemeral snapshotting & trace logging
+    │   ├── loop-detector.ts       # SHA-256 state-action repeat detector (aborts at 3)
+    │   ├── policy-gate.ts         # Code-level human-in-the-loop approval gate
+    │   └── verifier.ts            # Out-of-band state & database verifier
+    ├── test-data/                 # Enterprise unstructured test assets & inputs
+    │   ├── invoices/              # JSON invoices and unstructured PDF (scan_0003.pdf)
+    │   ├── claims/                # Medical records and treatment summaries
+    │   └── tickets/               # Unstructured incoming tickets and employee emails
+    └── tools/                     # Modular tool definitions & executors
+        ├── browser.ts             # Playwright integration & numbered DOM snapshotting
+        ├── files.ts               # Local file scanner and reader (Text & PDF)
+        └── system.ts              # Credential isolation (system_login), ask_user, finish
+```
 
 ---
 
