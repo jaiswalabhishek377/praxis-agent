@@ -1,93 +1,86 @@
 # PraxisAgent — Autonomous AI Operations Worker
 
-An autonomous operations worker designed to execute end-to-end IT, ERP, and healthcare workflows across multi-system environments with element-referenced browser automation, deterministic safety gates, fault-tolerant chaos recovery, and independent state verification.
+An autonomous enterprise operations agent that executes end-to-end IT, ERP, and healthcare workflows across real browser portals and local filesystems—featuring element-referenced DOM perception, code-level approval gates, multi-model failover, and independent state verification.
+
+---
+![alt text](public/image-1.png)
+
+## ⚡ Core Highlights
+
+* **Zero-Framework ReAct Loop**: Hand-written TypeScript state machine with strict Zod schema validation and 1-turn self-repair—zero LangChain/CrewAI dependencies.
+* **Ephemeral DOM Perception**: Distills live pages into compact numbered element references (`[ref]` IDs, ~150–300 tokens/step). Prunes stale DOM trees each turn while preserving action history to prevent context degradation.
+* **Deterministic HITL Policy Gate**: Code-level security firewall that intercepts irreversible actions (`submit`, `approve`, `pay`, `confirm`), displays extracted form values, and fails closed (`deny`) in non-interactive terminals.
+* **SHA-256 Loop Prevention**: Computes SHA-256 hashes of `(page_state, action, params)` and automatically aborts after 3 duplicate actions without progress.
+* **Multi-Model Provider Cascade**: 4-tier Gemini failover (`gemini-3.5-flash-lite` → `gemini-flash-lite-latest` → `gemini-3-flash-preview` → `gemini-3.6-flash`) with Groq Llama 3.3 backup, achieving 100% completion through API rate limits.
+* **Independent Out-of-Band Verifier**: Isolated auditing service unreachable by the agent's browser that queries portal databases (`/__state`) to verify ground-truth records, detect duplicates, and generate audit dossiers with screenshot proof.
 
 ---
 
-## ※ Architecture & Core Principles
+## 🏛️ Architecture Overview
 
-1. **Ephemeral DOM Snapshotting**:
-   Rather than passing full HTML trees or maintaining bloated context, the agent operates via a compact numbered-element view (`[ref]` IDs, ~150–300 tokens per turn). Old DOM snapshots are pruned each turn while preserving the sequential text transcript, preventing context degradation.
-
-2. **State-Action Hash Loop Detection**:
-   Tracks execution state by computing a SHA-256 hash of `(page_state, action, params)`. If the agent repeats the exact same action in the exact same state 3 times without environmental progress, it aborts to prevent token waste and prompts replanning.
-
-3. **Deterministic Human-in-the-Loop (HITL) Policy Gate**:
-   A code-level safety firewall that intercepts risky action verbs (`submit`, `pay`, `approve`, `confirm`, `delete`). It displays the extracted form values, requests explicit human approval (`[y/N]`), and defaults to deny in non-interactive terminals. If denied, the agent halts safely with zero unauthorized database mutations.
-
-4. **Multi-Model Provider Cascade & Circuit Breakers**:
-   A 4-tier failover sequence across Gemini models (`gemini-3.5-flash-lite` → `gemini-flash-lite-latest` → `gemini-3-flash-preview` → `gemini-3.6-flash`), with optional Groq SDK fallback (`llama-3.3-70b-versatile`). Automatically catches HTTP 429 rate limits, context overflows, or provider outages with exponential backoff.
-
-5. **Credential Isolation via `system_login`**:
-   The agent is never given raw passwords in its prompt context. Instead, it issues `system_login({ system: "erp" | "healthcare" })`, and the runtime directly injects validated environment secrets into browser session storage.
-
-6. **Independent State & Database Verifier**:
-   An out-of-band verification layer unreachable by the agent's browser queries the target portal's database (`:3001/__state`, `:3002/__state`). It objectively verifies record creation, amount matching, and duplicate prevention against source documents, generating audit dossiers (`audit_dossier.json`) with screenshot proof.
+* **Playbook Context**: A company markdown playbook holds environmental knowledge (portal URLs, credential policies, file locations)—never hardcoded task steps.
+* **Sequential ReAct Engine**: Hand-written single-call execution loop rebuilding prompt state from sequential text transcripts and the single latest DOM snapshot.
+* **Perception & Sandbox**: Playwright operates via compact numbered element references (`[ref]`) restricted strictly to sandboxed origin allowlists.
+* **Credential Isolation**: Runtime injects validated environment secrets via `system_login`; credentials are never exposed in prompt context.
+* **Out-of-Band Verification**: Isolated verification layer queries underlying databases (`:3001/__state`, `:3002/__state`) to audit record diffs, amount matching, and duplicate prevention.
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Core Runtime & Language**: TypeScript 5.7, Node.js (ES Modules, executed directly via `tsx`)
-* **Agent Architecture**: Hand-written sequential ReAct execution loop (zero heavy agent frameworks or wrapper dependencies)
-* **LLM Providers & Multi-Model Cascade**:
-  * **Primary (Google Gemini REST API / `@google/generative-ai`)**: `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3-flash-preview`, `gemini-3.6-flash`
-  * **Fallback (Groq Cloud SDK `groq-sdk`)**: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `llama-3.3-70b-versatile`
-* **Browser Automation & Perception**: Playwright (`chromium`), Ephemeral Numbered DOM Distillation (`[ref]` IDs), Sandboxed Origin Enforcer
-* **Safety & Resiliency**:
-  * **Schema Enforcement**: Zod (strict JSON schema validation, parameter coercion, and 1-turn schema repair)
-  * **Fault Resilience**: `p-retry` (exponential backoff for HTTP 429/5xx), per-provider Circuit Breakers, SHA-256 State-Action Loop Detector
-  * **Policy Gate**: Interactive human-in-the-loop CLI gate with non-interactive terminal safe fallback
-* **Simulated Enterprise Infrastructure**: Express v4, `sql.js` (in-memory SQLite database with state inspection endpoints), injected chaos middleware (session dropouts, flaky DOM events, form validation errors)
-* **Document Ingestion**: `pdf-parse` (unstructured PDF invoice data extraction), Native Node.js `fs` / `path`
-* **CLI & Telemetry**: `chalk`, `ora`, `readline/promises`, full per-step JSONL tracing and screenshot capture
+| Category | Technology | Usage & Purpose |
+|:---|:---|:---|
+| **Runtime & Language** | **TypeScript 5.7**, **Node.js** (ESM, `tsx`) | Strongly-typed execution runtime with zero compilation lag |
+| **Agent Core** | Hand-written ReAct Engine | Pure deterministic sequential decision loop without third-party agent wrappers |
+| **Primary LLMs** | **Google Gemini REST API** (`v1beta`) | Fast, high-context reasoning (`3.5-flash-lite`, `3.6-flash`, `flash-preview`) |
+| **Fallback LLMs** | **Groq Cloud SDK** (`groq-sdk`) | Sub-second open-weights failover (`llama-3.3-70b-versatile`, `gpt-oss-120b`) |
+| **Browser Perception** | **Playwright** (`chromium`) | Ephemeral DOM distillation, interactive numbered elements, sandboxed origins |
+| **Safety & Validation** | **Zod**, `p-retry`, SHA-256 Hasher | Schema enforcement, 1-turn JSON repair, exponential backoff, loop breaker |
+| **Simulated Enterprise**| **Express v4**, **sql.js** (SQLite) | Dual portals (`:3001` ERP, `:3002` Claims) with fault injection middleware |
+| **Document Parsing** | **pdf-parse**, native Node `fs` | Unstructured PDF invoice parsing, JSON data loading, ticket resolution |
+| **Telemetry & UX** | `chalk`, `ora`, `readline/promises` | Interactive terminal UI, human approval prompts, full JSONL step tracing |
 
 ---
 
-## 📂 Project Structure & Folder Architecture
+## 📂 Project Structure
 
 ```text
 praxis-agent/
-├── companies/                     # Company-specific organizational knowledge
-│   └── globalcorp.md              # Systems, credentials policy, file routing rules
-├── eval-results.json              # Machine-readable 9/9 benchmark evaluation dataset
-├── eval-results.md                # Markdown benchmark report across all test runs
-├── package.json                   # Project dependencies and script declarations
-├── tsconfig.json                  # TypeScript compiler configuration
-└── src/
-    ├── cli.ts                     # Interactive CLI entrypoint (npx tsx src/cli.ts)
-    ├── eval/
-    │   └── harness.ts             # 9-scenario evaluation runner with chaos injection
-    ├── mock-apps/                 # Simulated multi-system enterprise environments
-    │   ├── erp-portal/            # Accounting & ERP system (Express + SQLite via sql.js)
-    │   │   ├── server.ts          # Backend routes (/login, /vouchers, /__state, /__reset)
-    │   │   └── public/            # Client interface (login view, voucher entry form)
-    │   └── healthcare-portal/     # Medical claims system
-    │       ├── server.ts          # Backend routes (/login, /submit-claim, /__state)
-    │       └── public/            # Claims filing interface
-    ├── runtime/                   # Hand-written autonomous agent engine
-    │   ├── adapter.ts             # Multi-model cascade, circuit breaker & schema repair
-    │   ├── loop.ts                # Main ReAct loop, ephemeral snapshotting & trace logging
-    │   ├── loop-detector.ts       # SHA-256 state-action repeat detector (aborts at 3)
-    │   ├── policy-gate.ts         # Code-level human-in-the-loop approval gate
-    │   └── verifier.ts            # Out-of-band state & database verifier
-    ├── test-data/                 # Enterprise unstructured test assets & inputs
-    │   ├── invoices/              # JSON invoices and unstructured PDF (scan_0003.pdf)
-    │   ├── claims/                # Medical records and treatment summaries
-    │   └── tickets/               # Unstructured incoming tickets and employee emails
-    └── tools/                     # Modular tool definitions & executors
-        ├── browser.ts             # Playwright integration & numbered DOM snapshotting
-        ├── files.ts               # Local file scanner and reader (Text & PDF)
-        └── system.ts              # Credential isolation (system_login), ask_user, finish
+├── companies/                 # Company context & operational policies (globalcorp.md)
+├── eval-results.md            # Detailed benchmark evaluation report (9/9 verified)
+├── eval-results.json          # Machine-readable evaluation dataset across scenarios
+├── package.json               # Scripts (dev:apps, eval) & dependencies
+├── src/
+│   ├── cli.ts                 # Interactive CLI entrypoint (`npx tsx src/cli.ts`)
+│   ├── eval/                  # 9-scenario evaluation harness with chaos injection
+│   │   └── harness.ts
+│   ├── mock-apps/             # Simulated enterprise portals with state endpoints
+│   │   ├── erp-portal/        # Vendor voucher portal (Express + SQLite)
+│   │   └── healthcare-portal/ # Patient insurance claims portal
+│   ├── runtime/               # Hand-crafted autonomous agent engine
+│   │   ├── adapter.ts         # Multi-model cascade, circuit breaker & schema repair
+│   │   ├── loop.ts            # ReAct execution loop, history pruning & trace recorder
+│   │   ├── loop-detector.ts   # SHA-256 state-action repeat detector (aborts at 3)
+│   │   ├── policy-gate.ts     # Code-level human-in-the-loop approval gate
+│   │   └── verifier.ts        # Out-of-band database & state verification engine
+│   ├── test-data/             # Unstructured test files (invoices, claims, tickets)
+│   │   ├── invoices/          # Scanned PDF invoice (scan_0003.pdf) & JSON vouchers
+│   │   ├── claims/            # Patient clinical notes & insurance claim records
+│   │   └── tickets/           # Incoming operations emails & employee requests
+│   └── tools/                 # Pure tool definitions & execution controllers
+│       ├── browser.ts         # Playwright controller & numbered element snapshotter
+│       ├── files.ts           # File discovery & multi-format reading (PDF/JSON/TXT)
+│       └── system.ts          # Credential isolation (`system_login`), ask_user, finish
 ```
+---
+![alt text](public/image-2.png)
 
 ---
 
-## 🚀 Setup & Execution Guide
 
-### 1. Prerequisites & Installation
-* **Node.js**: v18+ or v20+ recommended.
-* Clone the repository and install dependencies:
+## 🚀 Quickstart & Execution Guide
+
+### 1. Installation
 ```bash
 git clone https://github.com/jaiswalabhishek377/praxis-agent.git
 cd praxis-agent
@@ -102,120 +95,90 @@ ERP_URL="http://localhost:3001"
 CLAIMS_URL="http://localhost:3002"
 ```
 
-### 3. Start Simulated Enterprise Portals
-Launch the mock ERP (`:3001`) and Healthcare (`:3002`) portals in a separate terminal:
+### 3. Launch Simulated Portals
+Start the ERP (`:3001`) and Healthcare (`:3002`) portals in a separate terminal:
 ```bash
 npm run dev:apps
 ```
-*(Keep this terminal open while running the agent).*
+*(Leave running in the background).*
 
----
-
-## 🤖 Running the Autonomous Agent (CLI)
-
-To launch the interactive CLI with company context:
+### 4. Run the Agent (Interactive CLI)
 ```bash
 npx tsx src/cli.ts --company globalcorp
 ```
 
-When prompted:
-```
-🤖 What would you like me to do? 
->
-```
-
-### Example Prompts to Try:
-
-1. **Unstructured Invoice Resolution (PDF Parsing & ERP Entry)**:
-   ```
-   Find the latest invoice from Company Acme Corp, extract the amount and due date, enter it into our internal system, and tell me once it is done.
-   ```
-   *The agent will inspect incoming files, compare internal dates, skip paid invoices, parse the unstructured PDF (`scan_0003.pdf`), log in to ERP, trigger the human approval gate, and submit.*
-
-2. **Multi-System Healthcare Claim Routing**:
-   ```
-   Check my tickets for Dr. Evans's email and handle the claim request
-   ```
-   *The agent will read `tickets/ticket_02.txt`, deduce that this is a clinical claim, locate patient `P-9821`, route to the Healthcare portal (`:3002`), and file the outpatient claim.*
-
-3. **Autonomous Ticket Handling**:
-   ```
-   Take care of the request in tickets/ticket_01.txt
-   ```
+#### Example Prompts:
+* **Unstructured PDF Extraction & ERP Entry**:
+  ```
+  Find the latest invoice from Company Acme Corp, extract the amount and due date, enter it into our internal system, and tell me once it is done.
+  ```
+* **Healthcare Claim Resolution**:
+  ```
+  Check my tickets for Dr. Evans's email and handle the claim request
+  ```
+* **Unstructured Operations Ticket**:
+  ```
+  Take care of the request in tickets/ticket_01.txt
+  ```
 
 ---
 
-## 📊 Evaluation & Benchmark Results
+## 📊 Benchmark & Evaluation Results
 
-PraxisAgent was benchmarked across **9 end-to-end evaluation scenarios** covering core operations, cross-system routing, injected chaos (validation errors, session dropouts, flaky DOM submit buttons), and approval-denial safety gates.
+PraxisAgent was evaluated across **9 rigorous end-to-end scenarios** covering multi-candidate document analysis, cross-portal routing, chaos recovery (session dropouts, validation errors, flaky DOM buttons), and policy safety gates.
 
-### 1. Standard Benchmark Suite (Optimal API Conditions)
-*Verified: 9/9 (100% pass rate, 0 false claims)*
+### 1. Standard Benchmark Suite (100% Pass Rate)
+*Overall: **9/9 Verified** (0 false claims, 0 unhandled failures)*
 
 | ID | Scenario | Category | Runs | Verified | Steps | Tokens | Fallbacks | Time |
 |:---|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **SC-01** | Single JSON invoice entry (ERP) | Core | 1 | 1/1 | 8 | 13,618 | 0 | **18s** |
-| **SC-02** | Unreliable filenames, paid invoice skipped | Core / Autonomy | 1 | 1/1 | 14 | 42,903 | 3 | **35s** |
-| **SC-03** | PDF invoice parsing | Core | 1 | 1/1 | 8 | 14,918 | 0 | **16s** |
-| **SC-04** | Incomplete invoice flagged, valid one submitted | Core / Autonomy | 1 | 1/1 | 13 | 37,105 | 2 | **35s** |
-| **SC-05** | Healthcare claim submission | Multi-System | 1 | 1/1 | 12 | 26,824 | 2 | **26s** |
-| **SC-06** | Chaos: validation error recovery | Chaos | 1 | 1/1 | 13 | 34,015 | 0 | **20s** |
-| **SC-07** | Chaos: session timeout recovery | Chaos | 1 | 1/1 | 8 | 13,634 | 0 | **17s** |
-| **SC-08** | Chaos: flaky submit retry | Chaos | 1 | 1/1 | 9 | 16,325 | 1 | **19s** |
-| **SC-09** | Policy Gate: approval denied safety | Safety | 1 | 1/1 | 8 | 14,390 | 2 | **23s** |
-
----
+| **SC-01** | Single JSON invoice entry (ERP) | Core | 1 | 1/1 | 8 | 13,618 | 0 | 18s |
+| **SC-02** | Unreliable filenames, paid invoice skipped | Core / Autonomy | 1 | 1/1 | 14 | 42,903 | 3 | 35s |
+| **SC-03** | PDF invoice parsing | Core | 1 | 1/1 | 8 | 14,918 | 0 | 16s |
+| **SC-04** | Incomplete invoice flagged, valid one submitted | Core / Autonomy | 1 | 1/1 | 13 | 37,105 | 2 | 35s |
+| **SC-05** | Healthcare claim submission | Multi-System | 1 | 1/1 | 12 | 26,824 | 2 | 26s |
+| **SC-06** | Chaos: validation error recovery | Chaos | 1 | 1/1 | 13 | 34,015 | 0 | 20s |
+| **SC-07** | Chaos: session timeout recovery | Chaos | 1 | 1/1 | 8 | 13,634 | 0 | 17s |
+| **SC-08** | Chaos: flaky submit retry | Chaos | 1 | 1/1 | 9 | 16,325 | 1 | 19s |
+| **SC-09** | Policy Gate: approval denied safety | Safety | 1 | 1/1 | 8 | 14,390 | 2 | 23s |
 
 ### 2. High-Load Stress Test (Multi-Model Cascade & 429 Resilience)
-*Tested under continuous, un-paused back-to-back scenario execution to evaluate real-time API rate limit failover.*
+*Tested under unthrottled, back-to-back execution to stress-test real-time API failover:*
 
 | ID | Scenario | Runs | Verified | Steps | Tokens | API Fallback Events | Time | Primary Resiliency Fallback |
 |:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---|
-| **SC-01** | Single JSON invoice entry | 1 | 1/1 | 8 | 14,838 | 0 | **14s** | `gemini-3.5-flash-lite` |
-| **SC-02** | Unreliable filenames & paid filter | 1 | 1/1 | 14 | 39,815 | 8 | **61s** | `gemini-3.6-flash` |
-| **SC-03** | PDF invoice parsing | 1 | 1/1 | 8 | 16,405 | 0 | **14s** | `gemini-3.5-flash-lite` |
-| **SC-04** | Incomplete invoice flagged | 1 | 1/1 | 13 | 38,750 | 12 | **42s** | `gemini-3-flash-preview` |
-| **SC-05** | Healthcare claim submission | 1 | 1/1 | 11 | 26,057 | 9 | **43s** | `gemini-flash-lite-latest` |
-| **SC-06** | Chaos: validation error | 1 | 1/1 | 8 | 15,454 | 3 | **26s** | `gemini-flash-lite-latest` |
-| **SC-07** | Chaos: session timeout | 1 | 1/1 | 8 | 15,054 | 10 | **47s** | `gemini-3-flash-preview` |
-| **SC-08** | Chaos: flaky submit | 1 | 1/1 | 9 | 17,036 | 0 | **17s** | `gemini-3.5-flash-lite` |
-| **SC-09** | Policy Gate: approval denied safety | 1 | 1/1 | 8 | 15,099 | 7 | **36s** | `gemini-3.6-flash` |
+| **SC-01** | Single JSON invoice entry | 1 | 1/1 | 8 | 14,838 | 0 | 14s | `gemini-3.5-flash-lite` |
+| **SC-02** | Unreliable filenames & paid filter | 1 | 1/1 | 14 | 39,815 | 8 | 61s | `gemini-3.6-flash` |
+| **SC-03** | PDF invoice parsing | 1 | 1/1 | 8 | 16,405 | 0 | 14s | `gemini-3.5-flash-lite` |
+| **SC-04** | Incomplete invoice flagged | 1 | 1/1 | 13 | 38,750 | 12 | 42s | `gemini-3-flash-preview` |
+| **SC-05** | Healthcare claim submission | 1 | 1/1 | 11 | 26,057 | 9 | 43s | `gemini-flash-lite-latest` |
+| **SC-06** | Chaos: validation error | 1 | 1/1 | 8 | 15,454 | 3 | 26s | `gemini-flash-lite-latest` |
+| **SC-07** | Chaos: session timeout | 1 | 1/1 | 8 | 15,054 | 10 | 47s | `gemini-3-flash-preview` |
+| **SC-08** | Chaos: flaky submit | 1 | 1/1 | 9 | 17,036 | 0 | 17s | `gemini-3.5-flash-lite` |
+| **SC-09** | Policy Gate: approval denied safety | 1 | 1/1 | 8 | 15,099 | 7 | 36s | `gemini-3.6-flash` |
 
-> **Key Takeaway**: Despite aggressive HTTP 429 rate limiting during continuous execution, the Multi-Model Cascade achieved a **100% completion rate with 0 unhandled crashes and 0 corrupted database entries**.
+> **Key Takeaway**: Despite encountering 49 API rate-limit errors during high-load execution, the Multi-Model Cascade achieved **100% completion with zero unhandled exceptions and zero database corruption**.
 
----
-
-### Running the Evaluation Suite
 ```bash
-# Run all 9 scenarios
+# Run entire eval suite
 npx tsx src/eval/harness.ts
 
-# Run an individual scenario
-npx tsx src/eval/harness.ts --only SC-02
-
-# Resume evaluation (skips already verified runs)
-npx tsx src/eval/harness.ts --resume
+# Run single scenario
+npx tsx src/eval/harness.ts --only SC-03
 ```
 
 ---
 
-## 📂 Scenario Reference Guide
+## 📁 Audit Dossiers & Verifiable Evidence
 
-* **SC-01**: Baseline single JSON invoice voucher submission into ERP.
-* **SC-02**: Reading request ticket, resolving unreliable file metadata, skipping already-paid invoices, and submitting latest bill.
-* **SC-03**: Extracting unstructured invoice details from scanned PDF document (`scan_0003.pdf`) and submitting.
-* **SC-04**: Multi-file candidate scanning, skipping incomplete invoice missing amount (`export_b.json`), submitting latest valid invoice (`scan_0003.pdf`), and flagging skipped file in summary.
-* **SC-05**: Reading doctor request ticket, locating medical claim document, routing to Healthcare portal, and submitting outpatient claim.
-* **SC-06**: Dynamic chaos recovery from portal form validation errors.
-* **SC-07**: Dynamic chaos recovery from server session timeouts with automated re-authentication.
-* **SC-08**: Dynamic chaos recovery from flaky submission buttons with state confirmation.
-* **SC-09**: Deterministic human-in-the-loop approval denial verification (verifies zero records are created when human rejects submission).
+Every run produces an auditable execution dossier stored locally:
+* **Structured Traces**: `runs/<run-id>.jsonl` — exact step-by-step model thoughts, actions, and observations.
+* **Run Metrics**: `runs/<run-id>.json` — token consumption, latency, and step counts.
+* **Visual Proof**: `artifacts/<run-id>/step-X_after-click.png` — screenshots captured after state-changing actions.
+* **Verification Dossier**: `artifacts/<run-id>/audit_dossier.json` — objective database diff and verification verdict.
 
 ---
 
-## 📁 Audit Dossiers & Artifacts
-When executing tasks, PraxisAgent preserves complete local audit trails:
-* **Trace Logs**: `runs/<run-id>.jsonl`
-* **Run Metrics**: `runs/<run-id>.json`
-* **Visual Screenshots**: `artifacts/<run-id>/step-X_after-click.png`
-* **Verification Dossier**: `artifacts/<run-id>/audit_dossier.json`
+<p align="center">
+  Made with ❤️ for reliable, autonomous enterprise operations.
+</p>
