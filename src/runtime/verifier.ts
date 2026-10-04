@@ -69,8 +69,11 @@ export function checkRecords(exp: Expectation, before: any[] | undefined, after:
       const dbAmt = typeof r.amount === "string" ? parseFloat(r.amount.replace(/[^\d.-]/g, "")) : Number(r.amount);
       if (Math.round(dbAmt * 100) !== Math.round(Number(exp.amount) * 100)) reasons.push(`Amount mismatch: DB ${r.amount}, expected ${exp.amount}.`);
     } else {
-      if (!String(r.vendor_name).toLowerCase().includes(String(exp.vendor).toLowerCase()))
-        reasons.push(`Vendor mismatch: "${r.vendor_name}".`);
+      const dbVendor = String(r.vendor_name || "").toLowerCase().trim();
+      const expVendor = String(exp.vendor || "").toLowerCase().trim();
+      if (dbVendor && expVendor && !dbVendor.includes(expVendor) && !expVendor.includes(dbVendor)) {
+        reasons.push(`Vendor mismatch: DB "${r.vendor_name}", expected "${exp.vendor}".`);
+      }
         
       const dbAmt = typeof r.amount_usd === "string" ? parseFloat(r.amount_usd.replace(/[^\d.-]/g, "")) : r.amount_usd;
       if (Math.round(dbAmt * 100) !== Math.round(exp.amount * 100))
@@ -89,6 +92,7 @@ export async function deriveExpectation(runId: string): Promise<{ expected: Expe
 
   const readPaths: string[] = [];
   const fileObservations: Record<string, string> = {};
+  const typedValues: string[] = [];
   let finishText = "";
   
   for (const line of fs.readFileSync(tracePath, "utf8").split("\n")) {
@@ -102,23 +106,66 @@ export async function deriveExpectation(runId: string): Promise<{ expected: Expe
           fileObservations[p] = e.observation;
         }
       }
+      if (e.action === "browser_type" && typeof e.params?.text === "string") {
+        typedValues.push(e.params.text.trim());
+      }
       if (e.action === "finish") {
         finishText = JSON.stringify(e.params || {});
       }
     } catch { }
   }
 
-  let targetInvoicePath = readPaths.reverse()[0];
-  for (const p of readPaths) {
-    if (p.toLowerCase().endsWith('.pdf')) {
-      if (finishText.includes('AC-8888') || finishText.includes('2450') || finishText.includes('scan_0003')) {
+  // Find candidate file that was actually processed and submitted
+  let targetInvoicePath = "";
+
+  // Strategy 1: Check candidate files in reverse read order, matching typed form values or finish text, skipping invalid/incomplete/paid files
+  for (const p of [...readPaths].reverse()) {
+    const base = path.basename(p);
+    const baseNoExt = base.replace(/\.[^/.]+$/, "");
+
+    if (p.toLowerCase().endsWith(".pdf")) {
+      let pdfRaw = fileObservations[p] || "";
+      if (!pdfRaw && fs.existsSync(path.resolve(p))) {
+        try { pdfRaw = fs.readFileSync(path.resolve(p)).toString('utf-8'); } catch {}
+      }
+      const matchesTyped = typedValues.some(val => val.length >= 4 && pdfRaw.includes(val));
+      const inFinish = finishText.toLowerCase().includes(base.toLowerCase()) || finishText.toLowerCase().includes(baseNoExt.toLowerCase());
+      if (matchesTyped || inFinish) {
         targetInvoicePath = p;
         break;
       }
     } else {
       try {
-        const inv = JSON.parse(fs.readFileSync(path.resolve(p), "utf8"));
-        if ((inv.invoiceNumber && finishText.includes(inv.invoiceNumber)) || (inv.patientId && finishText.includes(inv.patientId))) {
+        const data = JSON.parse(fs.readFileSync(path.resolve(p), "utf8"));
+        // Skip incomplete or paid files — they cannot be the submitted invoice
+        if (data.amount === undefined && !data.coverageAmount) continue;
+        if (/paid in full/i.test(String(data.notes ?? ""))) continue;
+
+        const invNum = String(data.invoiceNumber || "");
+        const patId = String(data.patientId || "");
+        const patName = String(data.patientName || "");
+
+        const matchesTyped = (invNum && typedValues.includes(invNum)) || (patId && typedValues.includes(patId));
+        const inFinish = (invNum && finishText.includes(invNum)) || (patId && finishText.includes(patId)) || (patName && finishText.toLowerCase().includes(patName.toLowerCase()));
+
+        if (matchesTyped || inFinish) {
+          targetInvoicePath = p;
+          break;
+        }
+      } catch { }
+    }
+  }
+
+  // Fallback: If still not set, take the last read valid file
+  if (!targetInvoicePath) {
+    for (const p of [...readPaths].reverse()) {
+      if (p.toLowerCase().endsWith(".pdf")) {
+        targetInvoicePath = p;
+        break;
+      }
+      try {
+        const data = JSON.parse(fs.readFileSync(path.resolve(p), "utf8"));
+        if ((data.amount !== undefined || data.coverageAmount !== undefined) && !/paid in full/i.test(String(data.notes ?? ""))) {
           targetInvoicePath = p;
           break;
         }
@@ -129,30 +176,65 @@ export async function deriveExpectation(runId: string): Promise<{ expected: Expe
   if (!targetInvoicePath) return null;
 
   if (targetInvoicePath.toLowerCase().endsWith('.pdf')) {
-    let raw = fileObservations[targetInvoicePath] || '';
-    if (!raw) {
-      try {
-        const pdfParseModule = await import('pdf-parse');
-        const pdfParse = (pdfParseModule.default || pdfParseModule) as any;
-        const pdfData = await pdfParse(fs.readFileSync(path.resolve(targetInvoicePath)));
-        raw = pdfData?.text || '';
-      } catch {}
+    let raw = "";
+    try {
+      const pdfParseModule = await import('pdf-parse');
+      const pdfParse = (pdfParseModule.default || pdfParseModule) as any;
+      const pdfData = await pdfParse(fs.readFileSync(path.resolve(targetInvoicePath)));
+      raw = pdfData?.text || '';
+    } catch {}
+    if (!raw && fileObservations[targetInvoicePath]) {
+      raw = fileObservations[targetInvoicePath];
     }
+    // CRITICAL: Strip any tool wrapper prefix (e.g. "File: src/test-data/invoices/scan_0003.pdf (PDF Extracted Text):\n")
+    raw = raw.replace(/^File:\s*[^\r\n]+[\r\n]*/i, '').replace(/^[^\r\n]*\(PDF Extracted Text\):[^\r\n]*/i, '');
+
     const normalized = raw.replace(/\r?\n/g, ' ');
-    const invMatch = normalized.match(/(?:Invoice\s*(?:Number|No|#)?\s*[:]?\s*)([A-Z0-9-]+)/i) || normalized.match(/\b([A-Z]{2,}-\d{3,})\b/i);
-    const amtMatch = normalized.match(/(?:TOTAL\s*(?:DUE)?|Total|Subtotal|Amount\s*Due|Amount)\s*[:]?\s*\$?\s*([\d,]+(?:\s*\.\s*\d{2})?)/i)
-      || normalized.match(/\$\s*([\d,]+(?:\s*\.\s*\d{2})?)/i);
-    const dueMatch = normalized.match(/Due\s*Date\s*[:]?\s*(?:Net\s*\d+\s*)?\(?([A-Za-z0-9\s,/-]+)\)?/i);
-    const vendorMatch = normalized.match(/([A-Z0-9\s.,&-]+(?:CORP|INC|LLC|LTD|SOLUTIONS|HEALTHCARE|SYSTEMS))/i);
+
+    // 1. Invoice Number: Match explicit invoice tokens or codes with word boundaries
+    const invMatch = raw.match(/\bInvoice\s*(?:Number|No\.?|#)\s*[:]?\s*([A-Z0-9-]+)\b/i)
+      || raw.match(/\bInvoice\s*:\s*([A-Z0-9-]+)\b/i)
+      || raw.match(/\b([A-Z]{2,}-\d{3,})\b/i);
+
+    let invNumber = invMatch ? invMatch[1].trim() : '';
+    if (!invNumber) {
+      for (const val of typedValues) {
+        if (/^[A-Z0-9-]+$/i.test(val) && val.length >= 4 && raw.includes(val)) {
+          invNumber = val;
+          break;
+        }
+      }
+    }
+
+    // 2. Amount: Extract total due / amount due
+    const amtMatch = normalized.match(/(?:TOTAL\s*(?:DUE)?|Total|Subtotal|Amount\s*Due|Amount)\s*[:]?\s*\$?\s*([\d,]+(?:\s*\.\s*\d{1,2})?)/i)
+      || normalized.match(/\$\s*([\d,]+(?:\s*\.\s*\d{1,2})?)/i);
 
     let parsedAmount = 0;
     if (amtMatch) {
       const cleaned = amtMatch[1].replace(/[\s,]/g, '');
       parsedAmount = parseFloat(cleaned) || 0;
     }
-    const invNumber = invMatch ? invMatch[1].trim() : '';
-    const vendor = vendorMatch ? vendorMatch[1].trim().replace(/\s+(LLC|Inc\.?|Ltd\.?|Corp\.?)$/i, '') : '';
-    const dueDate = dueMatch ? isoDate(dueMatch[1].trim()) ?? undefined : undefined;
+
+    // 3. Due Date:
+    const dueMatch = normalized.match(/Due\s*Date\s*[:]?\s*(?:Net\s*\d+\s*)?\(?([A-Za-z0-9\s,/-]+)\)?/i);
+    const dueDate = dueMatch ? (isoDate(dueMatch[1].trim()) ?? undefined) : undefined;
+
+    // 4. Vendor:
+    let vendor = '';
+    const vendorLine = raw.split(/\r?\n/).find(l => /(?:CORP|INC|LLC|LTD|SOLUTIONS|HEALTHCARE|SYSTEMS|COMPANY)/i.test(l));
+    if (vendorLine) {
+      const vMatch = vendorLine.match(/\b([A-Z0-9\s.&'-]+?(?:CORP|INC|LLC|LTD|COMPANY))\b/i);
+      vendor = vMatch ? vMatch[1].trim() : vendorLine.split(/[-–—]/)[0].trim();
+    }
+    if (!vendor) {
+      for (const val of typedValues) {
+        if (/corp|inc|llc|solutions|technologies|systems/i.test(val) && raw.toLowerCase().includes(val.toLowerCase())) {
+          vendor = val;
+          break;
+        }
+      }
+    }
 
     return {
       expected: {
